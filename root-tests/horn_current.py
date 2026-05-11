@@ -3,7 +3,6 @@ import ROOT
 file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/root-test-files/horn_current_p_1sigma.root", "READ")
 ## horn_current_p_1sigmaxyposMM1, 2, 3
 ## 
-poop
 
 
 h1 = file.Get("horn_current_p_1sigmaxyposMM1")
