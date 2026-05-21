@@ -130,6 +130,29 @@ def renorm_kde_tf1(raw_func, xlo, xhi, npx=2000):
   return out
 
 
+# Horizontally stretch/squish: f(x) -> a * f(a*x). a < 1 widens and shortens; a > 1 narrows and tallens.
+# Preserves normalization when orig_func is a pdf on [xlo, xhi].
+def reshape_kde_tf1(orig_func, scale_factor, xlo=None, xhi=None, npx=2000):
+  if orig_func is None:
+    return None
+  if xlo is None:
+    xlo = orig_func.GetXmin()
+  if xhi is None:
+    xhi = orig_func.GetXmax()
+  orig_func.SetNpx(npx)
+
+  def manual_reshape(x, par):
+    a = par[0]
+    return a * orig_func.Eval(a * x[0])
+
+  name = "kde_reshape_%08x" % random.getrandbits(32)
+  out = ROOT.TF1(name, manual_reshape, xlo, xhi, 1)
+  out.SetParameter(0, scale_factor)
+  out.SetNpx(npx)
+  out._hold_orig = orig_func
+  return out
+
+
 # does the MSE for a function and a 1D histogram at the CENTER of each bin
 # (function, 1D histogram)
 # returns the MSE
@@ -161,23 +184,6 @@ def chi_sq(func, hist):
   return s
 
 
-# does a quasi integral to compute ISE for a function and a 1D histogram
-# (function, 1D histogram, divisions/bin)
-# returns the ISE
-def quasi_ISE(func, hist, divisions):
-  ise = 0.0
-  for i in range(1, hist.GetNbinsX() + 1):
-    a = hist.GetBinLowEdge(i)
-    b = a + hist.GetBinWidth(i)
-    dens = hist.GetBinContent(i)
-    dx = (b - a) / divisions
-    for j in range(divisions):
-      x = a + (j + 0.5) * dx
-      d = func.Eval(x) - dens
-      ise += d * d * dx
-  return ise
-
-
 # Build normalized pdf KDE for one bandwidth; returns TF1 or None.
 def kde_pdf_for_bandwidth(hist, bandwidth, kernel=DEFAULT_KDE_KERNEL,
                           adaptive=DEFAULT_KDE_ADAPTIVE, npx=2000):
@@ -205,7 +211,6 @@ def scan_kde_bandwidths(hist, bw_low, bw_high, step, kernel=DEFAULT_KDE_KERNEL,
       results.append({
         "bandwidth": bw,
         "mse": MSE(kde_fn, hist),
-        "ise": quasi_ISE(kde_fn, hist, ise_divisions),
         "chi2": chi_sq(kde_fn, hist),
       })
     bw += step
@@ -285,7 +290,7 @@ def pol2_fn(hist):
 
 
 
-def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE):
+def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=None):
   # Drawing: KDE + local bandwidth (left) vs polynomial fit (right)
   c1 = ROOT.TCanvas("c1", "KDE vs pol4", 1400, 600)
   c1.Divide(2, 1)
@@ -311,7 +316,13 @@ def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE):
   if kde:
     kde.SetLineColor(ROOT.kBlue)
     kde.SetLineWidth(2)
+    kde.SetLineStyle(2)
     kde.Draw("SAME C")
+    if reshape_scale is not None:
+      transformed = reshape_kde_tf1(kde, reshape_scale)
+      if transformed:
+        transformed.SetLineColor(ROOT.kMagenta + 1)
+        transformed.Draw("SAME C")
 
   pad_bw.cd()
   if tkde:
@@ -337,7 +348,7 @@ def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE):
 
 
 
-hist = mm1y
+hist = mm1x
 
 # seems like 0.18-0.22 are best for gaussian, not sure for others
 # 0.4 is about the max before it becomes nonsensical. The max is currently 1 in the def of optimized_kde
@@ -347,4 +358,5 @@ format_output(
   optimized_kde(hist, min_bw, adaptive=DEFAULT_KDE_ADAPTIVE),
   pol2_fn(hist),
   adaptive=DEFAULT_KDE_ADAPTIVE,
+  reshape_scale=0.98,
 )
