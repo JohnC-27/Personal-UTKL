@@ -4,7 +4,7 @@ import random
 ROOT.gErrorIgnoreLevel = ROOT.kWarning  # or kError to hide warnings too
 
 
-nominal_file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/root-test-files/nominal.root", "READ")
+nominal_file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/root_files/nominal.root", "READ")
 ## three TH2D named nominalxyposMM1, 2, 3
 
 mm1 = nominal_file.Get("nominalxyposMM1")
@@ -184,6 +184,25 @@ def chi_sq(func, hist):
   return s
 
 
+def fit_chi2_ndf(func, hist):
+  used = sum(1 for i in range(1, hist.GetNbinsX() + 1) if hist.GetBinError(i) > 0)
+  ndf = max(used - func.GetNpar(), 1)
+  return chi_sq(func, hist), ndf
+
+
+def draw_chi2_caption(func, hist, x=0.7, y=0.82) -> None:
+  if func is None:
+    return
+  chi2_val, ndf = fit_chi2_ndf(func, hist)
+  rchi2 = chi2_val / ndf
+  latex = ROOT.TLatex()
+  latex.SetNDC(True)
+  latex.SetTextFont(42)
+  latex.SetTextSize(0.03)
+  latex.DrawLatex(x, y, f"#chi^{{2}} = {chi2_val:.4f}")
+  latex.DrawLatex(x, y - 0.04, f"#chi^{{2}}/ndf = {rchi2:.4f}")
+
+
 # Build normalized pdf KDE for one bandwidth; returns TF1 or None.
 def kde_pdf_for_bandwidth(hist, bandwidth, kernel=DEFAULT_KDE_KERNEL,
                           adaptive=DEFAULT_KDE_ADAPTIVE, npx=2000):
@@ -200,13 +219,71 @@ def kde_pdf_for_bandwidth(hist, bandwidth, kernel=DEFAULT_KDE_KERNEL,
   return pdf
 
 
+def optimal_alpha(kde_func, hist, x_scale=1.0):
+  # Profiled amplitude: alpha minimizes weighted least squares vs bin contents.
+  num, den = 0.0, 0.0
+  for i in range(1, hist.GetNbinsX() + 1):
+    err = hist.GetBinError(i)
+    if err <= 0:
+      continue
+    observed = hist.GetBinContent(i)
+    shape = kde_func.Eval(x_scale * hist.GetBinCenter(i))
+    w = 1.0 / (err * err)
+    num += w * observed * shape
+    den += w * shape * shape
+  if den <= 0:
+    return 1.0
+  return num / den
+
+
+def scaled_kde_tf1(raw_func, alpha, xlo=None, xhi=None, npx=2000):
+  if raw_func is None:
+    return None
+  if xlo is None:
+    xlo = raw_func.GetXmin()
+  if xhi is None:
+    xhi = raw_func.GetXmax()
+  raw_func.SetNpx(npx)
+
+  def scaled(x, p):
+    return p[0] * raw_func.Eval(x[0])
+
+  name = "kde_scaled_%08x" % random.getrandbits(32)
+  out = ROOT.TF1(name, scaled, xlo, xhi, 1)
+  out.SetParameter(0, alpha)
+  out.SetNpx(npx)
+  out._hold_raw = raw_func
+  return out
+
+
+# Weighted adaptive TKDE scaled to unnormalized histogram counts (alpha * kde).
+def kde_fit_for_bandwidth(hist, bandwidth, kernel=DEFAULT_KDE_KERNEL,
+                          adaptive=DEFAULT_KDE_ADAPTIVE, npx=2000):
+  kde = weighted_kde(hist, bandwidth, kernel=kernel, adaptive=adaptive)
+  if kde is None:
+    return None
+  raw = kde.GetFunction()
+  if raw is None:
+    return None
+  xlo = hist.GetXaxis().GetXmin()
+  xhi = hist.GetXaxis().GetXmax()
+  alpha = optimal_alpha(raw, hist)
+  fit_fn = scaled_kde_tf1(raw, alpha, xlo, xhi, npx)
+  if fit_fn is not None:
+    fit_fn._hold_kde = kde
+    fit_fn._kde_alpha = alpha
+    fit_fn._kde_adaptive = adaptive
+    fit_fn._kde_kernel = kernel
+  return fit_fn
+
+
 # Scan bandwidths; returns list of {bandwidth, mse, ise, chi2} (failed fits omitted).
 def scan_kde_bandwidths(hist, bw_low, bw_high, step, kernel=DEFAULT_KDE_KERNEL,
                         adaptive=DEFAULT_KDE_ADAPTIVE, ise_divisions=100, npx=2000):
   results = []
   bw = bw_low
   while bw <= bw_high + 1e-12 * max(abs(bw_high), 1.0):
-    kde_fn = kde_pdf_for_bandwidth(hist, bw, kernel=kernel, adaptive=adaptive, npx=npx)
+    kde_fn = kde_fit_for_bandwidth(hist, bw, kernel=kernel, adaptive=adaptive, npx=npx)
     if kde_fn is not None:
       results.append({
         "bandwidth": bw,
@@ -241,65 +318,59 @@ def print_bandwidth_summary(kde, hist, rho):
 
 
 def optimized_kde(hist, min_bw, kernel=DEFAULT_KDE_KERNEL, adaptive=DEFAULT_KDE_ADAPTIVE):
-  hist_normalized = hist.Clone(hist.GetTitle())
-  hist_normalized.SetDirectory(0)
-  den_int = hist_normalized.Integral("width")
-  if den_int > 0:
-    hist_normalized.Scale(1.0 / den_int)
+  hist_fit = hist.Clone(hist.GetTitle())
+  hist_fit.SetDirectory(0)
 
-  print("KDE kernel:", kernel)
+  mode = "adaptive" if adaptive else "fixed"
+  print(f"KDE: weighted, {mode} bandwidth, kernel={kernel}")
   optimal_bw, bw_scan = find_optimal_bandwidth(
-    hist_normalized, min_bw, 1.0, 0.005, kernel=kernel, adaptive=adaptive, metric="mse")
+    hist_fit, min_bw, 0.000001, 0.00000001, kernel=kernel, adaptive=adaptive, metric="mse")
   print("optimal rho", optimal_bw)
 
   kde_fn = None
   if optimal_bw is not None:
-    kde_fn = kde_pdf_for_bandwidth(
-      hist_normalized, optimal_bw, kernel=kernel, adaptive=adaptive)
+    kde_fn = kde_fit_for_bandwidth(
+      hist_fit, optimal_bw, kernel=kernel, adaptive=adaptive)
     if kde_fn and kde_fn._hold_kde:
-      print_bandwidth_summary(kde_fn._hold_kde, hist_normalized, optimal_bw)
+      print_bandwidth_summary(kde_fn._hold_kde, hist_fit, optimal_bw)
+      print(f"  profiled alpha = {getattr(kde_fn, '_kde_alpha', 1.0):.6g}")
 
   if kde_fn:
-    print("MSE (bin centers, normalized mm1x vs KDE):", MSE(kde_fn, hist_normalized))
-    print("chi sq sum:", chi_sq(kde_fn, hist_normalized))
+    print("MSE (bin centers, unnormalized hist vs scaled KDE):", MSE(kde_fn, hist_fit))
+    print("chi sq sum:", chi_sq(kde_fn, hist_fit))
 
   return kde_fn
 
 
 def pol2_fn(hist):
-  hist_normalized = hist.Clone(hist.GetTitle())
-  hist_normalized.SetDirectory(0)
-  den_int = hist_normalized.Integral("width")
-  if den_int > 0:
-    hist_normalized.Scale(1.0 / den_int)
+  hist = hist.Clone(hist.GetTitle())
+  hist.SetDirectory(0)
 
 
-  pol2 = hist_normalized.Clone("pol4")
+  pol2 = hist.Clone("pol9")
   pol2.SetDirectory(0)
-  pol2_fit = pol2.Fit("pol4", "SQ0")
-  pol2_fn = pol2.GetFunction("pol4") if pol2_fit and pol2_fit.Status() == 0 else None
+  pol2_fit = pol2.Fit("pol9", "SQ0")
+  pol2_fn = pol2.GetFunction("pol9") if pol2_fit and pol2_fit.Status() == 0 else None
 
   if pol2_fn:
     pol2_fn._hold_pol2 = pol2
     print("\npol2 coefficients (p0 + p1*x + p2*x^2):")
     for i in range(pol2_fn.GetNpar()):
       print(f"  p{i} = {pol2_fn.GetParameter(i):.6g} ± {pol2_fn.GetParError(i):.6g}")
-    print("MSE (normalized mm1x vs pol2):", MSE(pol2_fn, hist_normalized))
-    print("REDUCED chi sq sum:", chi_sq(pol2_fn, hist_normalized) / 4)
+    print("MSE (normalized mm1x vs pol2):", MSE(pol2_fn, hist))
+    print("REDUCED chi sq sum:", chi_sq(pol2_fn, hist) / (25 - pol2_fn.GetNpar()))
   return pol2_fn
 
 
 
 def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=None):
-  # Drawing: KDE + local bandwidth (left) vs polynomial fit (right)
+  # Drawing: weighted adaptive KDE + local bandwidth (left) vs polynomial fit (right)
   c1 = ROOT.TCanvas("c1", "KDE vs pol4", 1400, 600)
   c1.Divide(2, 1)
 
-  hist_normalized = hist.Clone(hist.GetTitle())
-  hist_normalized.SetDirectory(0)
-  den_int = hist_normalized.Integral("width")
-  if den_int > 0:
-    hist_normalized.Scale(1.0 / den_int)
+  hist_draw = hist.Clone(hist.GetTitle())
+  hist_draw.SetDirectory(0)
+  hist_draw.SetStats(0)
 
   c1.cd(1)
   pad_pdf = ROOT.TPad("pdf", "pdf", 0, 0.32, 1, 1)
@@ -309,9 +380,13 @@ def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=
 
   pad_pdf.cd()
   mode = "adaptive" if adaptive else "fixed"
-  hist_normalized.SetMarkerSize(0.8)
-  hist_normalized.Draw("E1 HIST")
-  hist_normalized.SetTitle(f"KDE fit ({mode} bandwidth)")
+  alpha = getattr(kde, "_kde_alpha", None)
+  hist_draw.SetMarkerSize(0.8)
+  hist_draw.Draw("E1 HIST")
+  title = f"Weighted KDE ({mode} bandwidth)"
+  if alpha is not None:
+    title += f"; #alpha={alpha:.4g}"
+  hist_draw.SetTitle(title)
   tkde = getattr(kde, "_hold_kde", None) if kde else None
   if kde:
     kde.SetLineColor(ROOT.kBlue)
@@ -323,24 +398,27 @@ def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=
       if transformed:
         transformed.SetLineColor(ROOT.kMagenta + 1)
         transformed.Draw("SAME C")
+  draw_chi2_caption(kde, hist_draw)
 
   pad_bw.cd()
   if tkde:
-    bw_graph = adaptive_bandwidth_graph(tkde, hist_normalized)
+    bw_graph = adaptive_bandwidth_graph(tkde, hist_draw)
     if bw_graph:
       bw_graph.Draw("AL")
       pad_bw.SetGridy()
 
   c1.cd(2)
-  hist_pol2 = hist_normalized.Clone()
+  hist_pol2 = hist.Clone()
   hist_pol2.SetDirectory(0)
+  hist_pol2.SetStats(0)
   hist_pol2.SetMarkerSize(0.8)
   hist_pol2.Draw("E1 HIST")
-  hist_pol2.SetTitle("pol4 fit")
+  hist_pol2.SetTitle("Y projection pol9 fit")
   if pol2:
     pol2.SetLineColor(ROOT.kRed)
     pol2.SetLineWidth(2)
     pol2.Draw("SAME")
+    draw_chi2_caption(pol2, hist_pol2)
 
   c1.Update()
   input()
@@ -352,7 +430,7 @@ hist = mm1x
 
 # seems like 0.18-0.22 are best for gaussian, not sure for others
 # 0.4 is about the max before it becomes nonsensical. The max is currently 1 in the def of optimized_kde
-min_bw = 0.2
+min_bw = 0.0000001
 format_output(
   hist,
   optimized_kde(hist, min_bw, adaptive=DEFAULT_KDE_ADAPTIVE),
