@@ -82,7 +82,7 @@ def plot_fit(
   canvas.cd(1)
   pad_overlay = canvas.GetPad(1)
   pad_overlay.SetGridy()
-  target.SetTitle("X projection: data vs weighted adaptive KDE")
+  target.SetTitle("X projection - weighted adaptive KDE")
   target.Draw("E1 HIST")
   template.Draw("HIST C SAME")
 
