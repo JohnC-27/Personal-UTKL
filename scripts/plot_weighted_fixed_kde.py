@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot target data vs KDE chi-squared fit from kde_chi2_fit.root."""
+"""Plot target data vs weighted adaptive KDE fit from weighted_fixed_kde.root."""
 
 import os
 import sys
@@ -10,10 +10,12 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 FIT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "kde_chi2_fit.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "weighted_fixed_kde.root"
 )
 OUTPUT_IMAGE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "kde_chi2_fit_plot.png"
+  os.path.dirname(os.path.dirname(__file__)),
+  "root_files",
+  "weighted_fixed_kde_plot.png",
 )
 
 
@@ -54,7 +56,7 @@ def _style_target(target: ROOT.TH1) -> None:
 
 def _style_template(template: ROOT.TH1) -> None:
   template.SetLineColor(ROOT.kBlue + 1)
-  template.SetLineWidth(1)
+  template.SetLineWidth(2)
   template.SetFillStyle(0)
 
 
@@ -67,7 +69,6 @@ def plot_fit(
 ) -> None:
   alpha = meta["alpha"]
   rho = meta["rho"]
-  x_scale = meta.get("x_scale", 1.0)
   chi2 = meta["chi2"]
   ndf = meta["ndf"]
   rchi2 = meta.get("reduced_chi2", chi2 / max(ndf, 1))
@@ -75,49 +76,42 @@ def plot_fit(
   _style_target(target)
   _style_template(template)
 
-  canvas = ROOT.TCanvas("c", "KDE chi2 fit", 1400, 600)
+  canvas = ROOT.TCanvas("c", "Weighted adaptive KDE fit", 1400, 600)
   canvas.Divide(2, 1)
 
-  # Left pad: data histogram with KDE overlaid
   canvas.cd(1)
   pad_overlay = canvas.GetPad(1)
   pad_overlay.SetGridy()
-  target.SetTitle("X projection KDE")
+  target.SetTitle("X projection: data vs weighted adaptive KDE")
   target.Draw("E1 HIST")
   template.Draw("HIST C SAME")
 
-  leg = ROOT.TLegend(0.65, 0.86, 0.88, 0.88)
+  leg = ROOT.TLegend(0.58, 0.72, 0.88, 0.88)
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
   leg.SetTextSize(0.028)
-  leg.AddEntry(template, "#alpha#timesKDE(s x)", "l")
+  leg.AddEntry(target, "Data", "lep")
+  leg.AddEntry(template, "#alpha#timesKDE(x)", "l")
   leg.Draw()
 
   latex = ROOT.TLatex()
   latex.SetNDC()
   latex.SetTextFont(42)
   latex.SetTextSize(0.028)
-  latex.DrawLatex(
-    0.677, 0.835,
-    f"#rho={rho:.3g}, #alpha={alpha:.3g}, #it{{s}}={x_scale:.3g}",
-  )
-  latex.DrawLatex(
-    0.677, 0.805,
-    f"#chi^{{2}}={chi2:.1f}, #chi^{{2}}/ndf={rchi2:.1f}",
-  )
+  latex.DrawLatex(0.58, 0.66, f"#rho={rho:.4g}, #alpha={alpha:.4g}")
+  latex.DrawLatex(0.58, 0.62, f"#chi^{{2}}={chi2:.1f}, #chi^{{2}}/ndf={rchi2:.1f}")
 
-  # Right pad: KDE template alone
   canvas.cd(2)
   pad_kde = canvas.GetPad(2)
   pad_kde.SetGridy()
   template.SetTitle("KDE template")
   template.Draw("HIST C")
 
-  leg_kde = ROOT.TLegend(0.68, 0.85, 0.88, 0.88)
+  leg_kde = ROOT.TLegend(0.62, 0.82, 0.88, 0.88)
   leg_kde.SetBorderSize(0)
   leg_kde.SetFillStyle(0)
   leg_kde.SetTextSize(0.028)
-  leg_kde.AddEntry(template, "KDE fit (#alpha#timesKDE)", "l")
+  leg_kde.AddEntry(template, "#alpha#timesKDE(x)", "l")
   leg_kde.Draw()
 
   canvas.Update()

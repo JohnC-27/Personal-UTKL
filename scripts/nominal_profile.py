@@ -324,7 +324,7 @@ def optimized_kde(hist, min_bw, kernel=DEFAULT_KDE_KERNEL, adaptive=DEFAULT_KDE_
   mode = "adaptive" if adaptive else "fixed"
   print(f"KDE: weighted, {mode} bandwidth, kernel={kernel}")
   optimal_bw, bw_scan = find_optimal_bandwidth(
-    hist_fit, min_bw, 0.000001, 0.00000001, kernel=kernel, adaptive=adaptive, metric="mse")
+    hist_fit, min_bw, 0.5, 0.0001, kernel=kernel, adaptive=adaptive, metric="mse")
   print("optimal rho", optimal_bw)
 
   kde_fn = None
@@ -347,17 +347,18 @@ def pol2_fn(hist):
   hist.SetDirectory(0)
 
 
-  pol2 = hist.Clone("pol9")
+  pol2 = hist.Clone("pol8")
   pol2.SetDirectory(0)
-  pol2_fit = pol2.Fit("pol9", "SQ0")
-  pol2_fn = pol2.GetFunction("pol9") if pol2_fit and pol2_fit.Status() == 0 else None
+  pol2_fit = pol2.Fit("pol8", "SQ0")
+  pol2_fn = pol2.GetFunction("pol8") if pol2_fit and pol2_fit.Status() == 0 else None
 
   if pol2_fn:
     pol2_fn._hold_pol2 = pol2
-    print("\npol2 coefficients (p0 + p1*x + p2*x^2):")
+    print("Polynomial Coefficients:")
     for i in range(pol2_fn.GetNpar()):
       print(f"  p{i} = {pol2_fn.GetParameter(i):.6g} ± {pol2_fn.GetParError(i):.6g}")
-    print("MSE (normalized mm1x vs pol2):", MSE(pol2_fn, hist))
+    print("MSE (normalized mm1x vs pol):", MSE(pol2_fn, hist))
+    print("Chi2:", chi_sq(pol2_fn, hist))
     print("REDUCED chi sq sum:", chi_sq(pol2_fn, hist) / (25 - pol2_fn.GetNpar()))
   return pol2_fn
 
@@ -413,7 +414,7 @@ def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=
   hist_pol2.SetStats(0)
   hist_pol2.SetMarkerSize(0.8)
   hist_pol2.Draw("E1 HIST")
-  hist_pol2.SetTitle("Y projection pol9 fit")
+  hist_pol2.SetTitle("X projection pol8 fit")
   if pol2:
     pol2.SetLineColor(ROOT.kRed)
     pol2.SetLineWidth(2)
@@ -430,7 +431,7 @@ hist = mm1x
 
 # seems like 0.18-0.22 are best for gaussian, not sure for others
 # 0.4 is about the max before it becomes nonsensical. The max is currently 1 in the def of optimized_kde
-min_bw = 0.0000001
+min_bw = 0.05
 format_output(
   hist,
   optimized_kde(hist, min_bw, adaptive=DEFAULT_KDE_ADAPTIVE),
