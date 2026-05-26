@@ -33,11 +33,17 @@ CHI2_SCAN_PNG = os.path.join(
 
 TKDE_OPTIONS = "KernelType:Gaussian;Iteration:Fixed;Mirror:noMirror"
 
-RHO_SCAN_MIN = 0.09
+NPAR = 1  # rho; alpha profiled (linear WLS)
+
+RHO_SCAN_MIN = 0.0983
 RHO_SCAN_MAX = 0.1
 RHO_SCAN_STEP = 0.00001
 
-NPAR = 1  # rho; alpha profiled (linear WLS)
+# optimal rho for chi2/ndf = 1
+# mm1x: 0.0983   y: 0.10486 or 0.10487
+# mm2x: 
+
+
 
 
 @dataclass
@@ -194,6 +200,20 @@ def count_chi2_bins(hist: ROOT.TH1) -> int:
   return n
 
 
+def chi2_contributions(hist: ROOT.TH1, kde_func: ROOT.TF1, alpha: float) -> list:
+  """Makes a list of the contributions to the chi2 error"""
+  contributions = []
+  for i in range(1, count_chi2_bins(hist)):
+    err = hist.GetBinError(i)
+    if err <= 0:
+      continue
+    observed = hist.GetBinContent(i)
+    expected = alpha * kde_func.Eval(hist.GetBinCenter(i))
+    diff = observed - expected
+    contributions[i] = (diff * diff) / (err * err)
+  return contributions
+
+
 def degrees_of_freedom(nbins: int, npar: int = NPAR) -> int:
   """ndf = nbins - nparams."""
   return max(nbins - npar, 1)
@@ -284,12 +304,21 @@ def kde_template_histogram(
   ref_hist: ROOT.TH1,
   alpha: float,
   name: str = "kde_template",
+  x_axis_title: str = PROJECTION_AXIS
 ) -> ROOT.TH1D:
   """Binned template: alpha * KDE(x) at ref_hist bin centers."""
   nb = ref_hist.GetNbinsX()
   xlo = ref_hist.GetXaxis().GetXmin()
   xhi = ref_hist.GetXaxis().GetXmax()
-  out = ROOT.TH1D(name, "#alpha#timesKDE(x);X;Expected", nb, xlo, xhi)
+
+  if x_axis_title.lower() == 'x':
+    x_axis_title = 'x [cm]'
+  elif x_axis_title.lower() == 'y':
+    x_axis_title = 'y [cm]'
+  else:
+    x_axis_title = 'X'
+  
+  out = ROOT.TH1D(name, f"#alpha#timesKDE(x);{x_axis_title};Entries", nb, xlo, xhi)
   out.SetDirectory(0)
   for i in range(1, nb + 1):
     x = ref_hist.GetBinCenter(i)

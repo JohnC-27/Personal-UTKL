@@ -2,7 +2,7 @@ import ROOT
 ROOT.gErrorIgnoreLevel = ROOT.kWarning  # or kError to hide warnings too
 
 
-nominal_file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/root-test-files/nominal.root", "READ")
+nominal_file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/root_files/nominal.root", "READ")
 ## three TH2D named nominalxyposMM1, 2, 3
 
 mm1 = nominal_file.Get("nominalxyposMM1")
