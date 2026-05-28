@@ -83,7 +83,8 @@ def _make_ratio_hist(data: ROOT.TH1, model: ROOT.TH1) -> ROOT.TH1:
   return ratio
 
 
-def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.15) -> None:
+# pad_frac gives a bit more breathing room to the ratio plot. 0.03 has small scale, 0.15 has larger scale
+def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.03) -> None:
   ymax = 1.0
   ymin = 1.0
   for i in range(1, ratio.GetNbinsX() + 1):

@@ -35,14 +35,14 @@ TKDE_OPTIONS = "KernelType:Gaussian;Iteration:Fixed;Mirror:noMirror"
 
 NPAR = 1  # rho; alpha profiled (linear WLS)
 
-RHO_SCAN_MIN = 0.0983
+RHO_SCAN_MIN = 0.09830
 RHO_SCAN_MAX = 0.1
 RHO_SCAN_STEP = 0.00001
 
 # optimal rho for chi2/ndf = 1
-# mm1x: 0.0983   y: 0.10486 or 0.10487
-# mm2x: 
-
+# mm1x: 0.09830   y: 0.10486 or 0.10487
+# mm2x: 0.09571   y: 0.09063
+# mm3x: 0.09190   y: 0.09592
 
 
 
