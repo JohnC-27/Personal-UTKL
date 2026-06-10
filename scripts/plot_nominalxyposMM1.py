@@ -6,18 +6,23 @@ import sys
 
 import ROOT
 
+#from scripts.test_kde_vs_mz_nominal import N_OUTPUT_BINS, SOURCE_BINS
+
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "nominal.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1.root"
 )
-HIST_NAME = "nominalxyposMM1"
+HIST_NAME = "NominalxyposMM1"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "root_files")
 OUTPUT_2D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_colz.png")
 OUTPUT_3D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_surf3d.png")
 OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "nominalxyposMM1_x_y_proj.png")
 
+REBIN = True
+SOURCE_BINS = 2000
+N_OUTPUT_BINS = 100
 
 def load_histogram(filepath: str, hist_name: str) -> ROOT.TH2:
   tfile = ROOT.TFile.Open(filepath, "READ")
@@ -32,6 +37,23 @@ def load_histogram(filepath: str, hist_name: str) -> ROOT.TH2:
   hist.SetDirectory(0)
   tfile.Close()
   return hist
+
+
+def rebin_histogram(hist: ROOT.TH2, n_output_bins: int) -> ROOT.TH2:
+  if SOURCE_BINS % n_output_bins != 0:
+    raise ValueError(
+      f"N_OUTPUT_BINS={n_output_bins} must evenly divide SOURCE_BINS={SOURCE_BINS}"
+    )
+  if hist.GetNbinsX() != SOURCE_BINS or hist.GetNbinsY() != SOURCE_BINS:
+    raise ValueError(
+      f"expected {SOURCE_BINS}x{SOURCE_BINS} bins before rebinning, "
+      f"got {hist.GetNbinsX()}x{hist.GetNbinsY()}"
+    )
+
+  factor = SOURCE_BINS // n_output_bins
+  rebinned = hist.Rebin2D(factor, factor, f"{hist.GetName()}_rebinned")
+  rebinned.SetDirectory(0)
+  return rebinned
 
 
 def _style_histogram(hist: ROOT.TH2) -> None:
@@ -163,6 +185,8 @@ def plot_projection(hist: ROOT.TH2, outfile: str) -> None:
 def main() -> int:
   show = "--show" in sys.argv
   hist = load_histogram(INPUT_ROOT_FILE, HIST_NAME)
+  if REBIN == True:
+    hist = rebin_histogram(hist, N_OUTPUT_BINS)
 
   plot_colz(hist, OUTPUT_2D)
   plot_surf3d(hist, OUTPUT_3D)

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Plot target data vs weighted adaptive KDE fit from weighted_fixed_kde.root."""
 
+import math
 import os
 import sys
+from dataclasses import dataclass
 
 import ROOT
 
@@ -14,7 +16,7 @@ FIT_ROOT_FILE = os.path.join(
 )
 OUTPUT_IMAGE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)),
-  "root_files",
+  "plots",
   "weighted_fixed_kde_plot.png",
 )
 
@@ -27,6 +29,89 @@ def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float]:
   return out
 
 
+@dataclass
+class DistributionStats:
+  mean: float
+  std: float
+
+
+def histogram_distribution_stats(hist: ROOT.TH1) -> DistributionStats:
+  """Weighted mean and std from bin centers and contents."""
+  integral = 0.0
+  mean_num = 0.0
+  for i in range(1, hist.GetNbinsX() + 1):
+    weight = hist.GetBinContent(i)
+    if weight <= 0:
+      continue
+    x = hist.GetBinCenter(i)
+    integral += weight
+    mean_num += weight * x
+
+  if integral <= 0:
+    return DistributionStats(0.0, 0.0)
+
+  mean = mean_num / integral
+  var_num = 0.0
+  for i in range(1, hist.GetNbinsX() + 1):
+    weight = hist.GetBinContent(i)
+    if weight <= 0:
+      continue
+    x = hist.GetBinCenter(i)
+    diff = x - mean
+    var_num += weight * diff * diff
+
+  return DistributionStats(mean=mean, std=math.sqrt(var_num / integral))
+
+
+def _draw_stats_table(
+  pad: ROOT.TPad,
+  hist_stats: DistributionStats,
+  kde_stats: DistributionStats,
+  *,
+  unit: str = "cm",
+) -> None:
+  """Draw mean/std comparison table at the bottom center of a pad."""
+  pad.cd()
+  delta = DistributionStats(
+    mean=kde_stats.mean - hist_stats.mean,
+    std=kde_stats.std - hist_stats.std,
+  )
+
+  latex = ROOT.TLatex()
+  latex.SetNDC()
+  latex.SetTextFont(42)
+  latex.SetTextSize(0.024)
+
+  x_label = 0.36
+  x_mean = 0.50
+  x_std = 0.64
+  y_title = 0.55
+  y_header = 0.51
+  y_hist = 0.47
+  y_kde = 0.44
+  y_delta = 0.41
+
+  latex.SetTextAlign(23)
+  latex.DrawLatex(0.50, y_title, f"Statistics ({unit})")
+
+  latex.SetTextAlign(23)
+  latex.DrawLatex(x_mean, y_header, "mean")
+  latex.DrawLatex(x_std, y_header, "std dev")
+
+  latex.SetTextAlign(13)
+  latex.DrawLatex(x_label, y_hist, "histogram")
+  latex.DrawLatex(x_label, y_kde, "KDE")
+  latex.DrawLatex(x_label, y_delta, "difference")
+
+  latex.SetTextAlign(23)
+  latex.DrawLatex(x_mean, y_hist, f"{hist_stats.mean:.4g}")
+  latex.DrawLatex(x_std, y_hist, f"{hist_stats.std:.4g}")
+  latex.DrawLatex(x_mean, y_kde, f"{kde_stats.mean:.4g}")
+  latex.DrawLatex(x_std, y_kde, f"{kde_stats.std:.4g}")
+  latex.DrawLatex(x_mean, y_delta, f"{delta.mean:.4g}")
+  latex.DrawLatex(x_std, y_delta, f"{delta.std:.4g}")
+
+
 def load_fit_objects(filepath: str):
   tfile = ROOT.TFile.Open(filepath, "READ")
   if not tfile or tfile.IsZombie():
@@ -34,8 +119,14 @@ def load_fit_objects(filepath: str):
 
   target = tfile.Get("target_hist")
   template = tfile.Get("kde_template")
+  kde_shape = tfile.Get("kde_shape")
   meta = tfile.Get("fit_meta")
-  for name, obj in [("target_hist", target), ("kde_template", template), ("fit_meta", meta)]:
+  for name, obj in [
+    ("target_hist", target),
+    ("kde_template", template),
+    ("kde_shape", kde_shape),
+    ("fit_meta", meta),
+  ]:
     if not obj:
       tfile.Close()
       raise KeyError(f"missing {name!r} in {filepath}")
@@ -44,9 +135,10 @@ def load_fit_objects(filepath: str):
   target.SetStats(0)
   template.SetDirectory(0)
   template.SetStats(0)
+  kde_shape = kde_shape.Clone("kde_shape_plot")
   meta_title = meta.GetTitle()
   tfile.Close()
-  return target, template, parse_fit_meta(meta), meta_title
+  return target, template, kde_shape, parse_fit_meta(meta), meta_title
 
 
 def _style_target(target: ROOT.TH1) -> None:
@@ -54,10 +146,26 @@ def _style_target(target: ROOT.TH1) -> None:
   target.SetLineWidth(1)
 
 
-def _style_template(template: ROOT.TH1) -> None:
-  template.SetLineColor(ROOT.kBlue + 1)
-  template.SetLineWidth(2)
-  template.SetFillStyle(0)
+def _style_kde_curve(kde_curve: ROOT.TF1) -> None:
+  kde_curve.SetLineColor(ROOT.kBlue + 1)
+  kde_curve.SetLineWidth(2)
+
+
+def make_scaled_kde_curve(kde_shape: ROOT.TF1, alpha: float) -> ROOT.TF1:
+  """Analytic #alpha#timesKDE(x) for drawing (template stays binned for ratios)."""
+  xmin = kde_shape.GetXmin()
+  xmax = kde_shape.GetXmax()
+  npx = kde_shape.GetNpx()
+  if npx <= 0:  # this is just a backup. npx should already be 10000, set in KDE creation script
+    npx = 10000
+
+  def scaled(x, _p):
+    return alpha * kde_shape.Eval(x[0])
+
+  curve = ROOT.TF1("kde_fit_scaled", scaled, xmin, xmax, 0)
+  curve.SetNpx(npx)
+  curve._hold_shape = kde_shape
+  return curve
 
 
 def _make_ratio_hist(data: ROOT.TH1, model: ROOT.TH1) -> ROOT.TH1:
@@ -114,6 +222,7 @@ def _draw_unity_line(hist: ROOT.TH1) -> None:
 def plot_fit(
   target: ROOT.TH1,
   template: ROOT.TH1,
+  kde_shape: ROOT.TF1,
   meta: dict[str, float],
   outfile: str,
   show: bool = False,
@@ -124,8 +233,9 @@ def plot_fit(
   ndf = meta["ndf"]
   rchi2 = meta.get("reduced_chi2", chi2 / max(ndf, 1))
 
+  kde_curve = make_scaled_kde_curve(kde_shape, alpha)
   _style_target(target)
-  _style_template(template)
+  _style_kde_curve(kde_curve)
 
   canvas = ROOT.TCanvas("c", "Weighted adaptive KDE fit", 1400, 600)
   canvas.Divide(2, 1)
@@ -150,18 +260,18 @@ def plot_fit(
   pad_ratio.Draw()
 
   pad_main.cd()
-  target.SetTitle("MM1 X Projection - Weighted Fixed KDE")
+  target.SetTitle("MM1 X Projection - Weighted, Fixed, Mirrored/Unmirrored KDE")
   target.GetXaxis().SetLabelSize(0)
   target.GetXaxis().SetTitleSize(0)
   target.Draw("E1 HIST")
-  template.Draw("HIST C SAME")
+  kde_curve.Draw("L SAME")
 
   leg = ROOT.TLegend(0.7, 0.8, 0.88, 0.88)
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
   leg.SetTextSize(0.028)
   leg.AddEntry(target, "Data", "lep")
-  leg.AddEntry(template, "#alpha#timesKDE(x)", "l")
+  leg.AddEntry(kde_curve, "#alpha#timesKDE(x)", "l")
   leg.Draw()
 
   pad_ratio.cd()
@@ -169,17 +279,25 @@ def plot_fit(
   ratio.Draw("E1")
   _draw_unity_line(ratio)
 
+  hist_stats = histogram_distribution_stats(target)
+  kde_stats = histogram_distribution_stats(template)
+  pad_left.cd()
+  _draw_stats_table(pad_left, hist_stats, kde_stats)
+
   canvas.cd(2)
   pad_kde = canvas.GetPad(2)
+  pad_kde.SetBottomMargin(0.22)
   pad_kde.SetGridy()
-  template.SetTitle("Weighted Fixed KDE")
-  template.Draw("HIST C")
+  kde_curve.SetTitle("Weighted, Fixed, Mirrored/Unmirrored KDE")
+  kde_curve.GetXaxis().SetTitle(target.GetXaxis().GetTitle())
+  kde_curve.GetYaxis().SetTitle(target.GetYaxis().GetTitle())
+  kde_curve.Draw("L")
 
   leg_kde = ROOT.TLegend(0.4, 0.6, 0.88, 0.88)
   leg_kde.SetBorderSize(0)
   leg_kde.SetFillStyle(0)
   leg_kde.SetTextSize(0.028)
-  leg_kde.AddEntry(template, "#alpha#timesKDE(x)", "l")
+  leg_kde.AddEntry(kde_curve, "#alpha#timesKDE(x)", "l")
   leg_kde.Draw()
 
   latex = ROOT.TLatex()
@@ -188,6 +306,15 @@ def plot_fit(
   latex.SetTextSize(0.028)
   latex.DrawLatex(0.4, 0.66, f"#rho={rho:.5g}, #alpha={alpha:.5g}")
   latex.DrawLatex(0.4, 0.62, f"#chi^{{2}}={chi2:.3f}, #chi^{{2}}/ndf={rchi2:.3f}")
+  if meta.get("linear_combo", 0):
+    mix = meta["mix"]
+    latex.DrawLatex(
+      0.3,
+      0.58,
+      f"mix={mix:.3g} (unmirrored), {1.0 - mix:.3g} (mirrored)",
+    )
+
+  # _draw_stats_table(pad_kde, hist_stats, kde_stats)
 
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -201,8 +328,8 @@ def plot_fit(
 
 def main() -> int:
   show = "--show" in sys.argv
-  target, template, meta, _ = load_fit_objects(FIT_ROOT_FILE)
-  plot_fit(target, template, meta, OUTPUT_IMAGE, show=show)
+  target, template, kde_shape, meta, _ = load_fit_objects(FIT_ROOT_FILE)
+  plot_fit(target, template, kde_shape, meta, OUTPUT_IMAGE, show=show)
   return 0
 
 
