@@ -237,7 +237,7 @@ def plot_fit(
   _style_target(target)
   _style_kde_curve(kde_curve)
 
-  canvas = ROOT.TCanvas("c", "Weighted adaptive KDE fit", 1400, 600)
+  canvas = ROOT.TCanvas("c", "Weighted adaptive KDE fit", 2800, 1200)
   canvas.Divide(2, 1)
 
   ratio = _make_ratio_hist(target, template)
