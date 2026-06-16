@@ -10,9 +10,11 @@ X/Y projection panels (matching plot_2d_kde.py, without a KDE-only pad).
 """
 
 import array
+import json
 import math
 import os
 import sys
+import time
 
 import ROOT
 
@@ -46,17 +48,78 @@ RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
 
 
-def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float]:
-  out: dict[str, float] = {}
+def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
+  # #region agent log
+  _log_path = os.path.join(
+    os.path.dirname(__file__), "..", ".cursor", "debug-8dd097.log"
+  )
+  def _dbg_log(location: str, message: str, data: dict, hypothesis_id: str, run_id: str = "post-fix") -> None:
+    with open(_log_path, "a", encoding="utf-8") as log_f:
+      log_f.write(
+        json.dumps(
+          {
+            "sessionId": "8dd097",
+            "timestamp": int(time.time() * 1000),
+            "location": location,
+            "message": message,
+            "data": data,
+            "hypothesisId": hypothesis_id,
+            "runId": run_id,
+          }
+        )
+        + "\n"
+      )
+  # #endregion
+
+  meta_title = meta.GetTitle()
+  # #region agent log
+  _dbg_log(
+    "test_2d_kde_vs_mz_nominal.py:parse_fit_meta:entry",
+    "fit_meta title loaded",
+    {"meta_title": meta_title, "parts": meta_title.split(";")},
+    "A",
+  )
+  # #endregion
+
+  out: dict[str, float | str | int] = {}
   for part in meta.GetTitle().split(";"):
     key, val = part.split("=", 1)
+    # #region agent log
+    _dbg_log(
+      "test_2d_kde_vs_mz_nominal.py:parse_fit_meta:part",
+      "parsing meta part",
+      {"key": key, "val": val, "is_pdf": key == "pdf"},
+      "B" if key == "pdf" else "C" if key.startswith("ndkeys") else "D",
+    )
+    # #endregion
     if key == "pdf":
+      out[key] = val
       continue
-    out[key] = float(val)
+    try:
+      num = float(val)
+      out[key] = int(num) if num.is_integer() and "." not in val else num
+    except ValueError:
+      out[key] = val
+      # #region agent log
+      _dbg_log(
+        "test_2d_kde_vs_mz_nominal.py:parse_fit_meta:non_numeric",
+        "stored non-numeric meta value as string",
+        {"key": key, "val": val},
+        "A",
+      )
+      # #endregion
+  # #region agent log
+  _dbg_log(
+    "test_2d_kde_vs_mz_nominal.py:parse_fit_meta:success",
+    "parse_fit_meta completed",
+    {"keys": list(out.keys())},
+    "A",
+  )
+  # #endregion
   return out
 
 
-def load_kde_shape(filepath: str) -> tuple[ROOT.TH2, dict[str, float]]:
+def load_kde_shape(filepath: str) -> tuple[ROOT.TH2, dict[str, float | str | int]]:
   tfile = ROOT.TFile.Open(filepath, "READ")
   if not tfile or tfile.IsZombie():
     raise OSError(f"cannot open {filepath}")

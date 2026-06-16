@@ -2,8 +2,10 @@
 """Plot 2D KDE fit results from 2d_kde.root."""
 
 import array
+import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 
 import ROOT
@@ -25,8 +27,13 @@ RATIO_Z_MIN_HALF_WIDTH = 0.05
 # Direct RooNDKeysPdf evaluation grid for surfaces and projections.
 KDE_PLOT_BINS = 200
 
-MIRROR_NO = ROOT.RooNDKeysPdf.NoMirror
-MIRROR_BOTH = ROOT.RooNDKeysPdf.MirrorBoth
+# 2D RooNDKeysPdf(RooArgSet, ...) takes an options string, not the legacy Mirror enum.
+NDKEYS_NO_MIRROR = "a"
+NDKEYS_MIRROR_BOTH = "am"
+
+DEBUG_LOG_PATH = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), ".cursor", "debug-8940bd.log"
+)
 
 
 @dataclass
@@ -127,11 +134,86 @@ def histogram_to_weighted_dataset(hist: ROOT.TH2) -> KdeEvalContext:
   return KdeEvalContext(x_var=x_var, y_var=y_var, argset=argset, dataset=dataset)
 
 
+def _weighted_mean_std_from_th2(hist: ROOT.TH2) -> tuple[float, float, float, float, float]:
+  total_w = 0.0
+  sum_x = 0.0
+  sum_y = 0.0
+  for ix in range(1, hist.GetNbinsX() + 1):
+    x = hist.GetXaxis().GetBinCenter(ix)
+    for iy in range(1, hist.GetNbinsY() + 1):
+      w = hist.GetBinContent(ix, iy)
+      if w <= 0:
+        continue
+      y = hist.GetYaxis().GetBinCenter(iy)
+      total_w += w
+      sum_x += w * x
+      sum_y += w * y
+
+  if total_w <= 0:
+    return 0.0, 0.0, 0.0, 0.0, 0.0
+
+  mean_x = sum_x / total_w
+  mean_y = sum_y / total_w
+
+  var_x = 0.0
+  var_y = 0.0
+  for ix in range(1, hist.GetNbinsX() + 1):
+    x = hist.GetXaxis().GetBinCenter(ix)
+    dx2 = (x - mean_x) * (x - mean_x)
+    for iy in range(1, hist.GetNbinsY() + 1):
+      w = hist.GetBinContent(ix, iy)
+      if w <= 0:
+        continue
+      y = hist.GetYaxis().GetBinCenter(iy)
+      dy2 = (y - mean_y) * (y - mean_y)
+      var_x += w * dx2
+      var_y += w * dy2
+
+  std_x = (var_x / total_w) ** 0.5
+  std_y = (var_y / total_w) ** 0.5
+  return total_w, mean_x, mean_y, std_x, std_y
+
+
+def ndkeys_bandwidths(target: ROOT.TH2, rho: float) -> tuple[float, float]:
+  """Return effective RooNDKeys bandwidths (rho * h0) in x and y."""
+  n_eff, _mx, _my, sigma_x, sigma_y = _weighted_mean_std_from_th2(target)
+  if n_eff <= 0:
+    return 0.0, 0.0
+
+  d = 2.0
+  silverman = (4.0 / (d + 2.0)) ** (1.0 / (d + 4.0))
+  n_factor = n_eff ** (-1.0 / (d + 4.0))
+  h0_x = silverman * sigma_x * n_factor
+  h0_y = silverman * sigma_y * n_factor
+  return rho * h0_x, rho * h0_y
+
+
+def print_ndkeys_bandwidths(target: ROOT.TH2, rho: float) -> None:
+  """Print RooNDKeys Silverman-rule h0 and effective rho*h0 widths."""
+  n_eff, _mx, _my, sigma_x, sigma_y = _weighted_mean_std_from_th2(target)
+  if n_eff <= 0:
+    print("RooNDKeys bandwidths: unable to compute (empty histogram).")
+    return
+
+  d = 2.0
+  silverman = (4.0 / (d + 2.0)) ** (1.0 / (d + 4.0))
+  n_factor = n_eff ** (-1.0 / (d + 4.0))
+  h0_x = silverman * sigma_x * n_factor
+  h0_y = silverman * sigma_y * n_factor
+  bw_x, bw_y = ndkeys_bandwidths(target, rho)
+  print(
+    "RooNDKeys bandwidths (Silverman): "
+    f"n_eff={n_eff:.6g}, rho={rho:.6g}, "
+    f"h0_x={h0_x:.6g}, h0_y={h0_y:.6g}, "
+    f"h_x={bw_x:.6g}, h_y={bw_y:.6g}"
+  )
+
+
 def make_ndkeys_pdf(
   name: str,
   ctx: KdeEvalContext,
   *,
-  mirror: int,
+  mirror_options: str,
   rho: float,
 ) -> ROOT.RooNDKeysPdf:
   return ROOT.RooNDKeysPdf(
@@ -139,9 +221,14 @@ def make_ndkeys_pdf(
     name,
     ctx.argset,
     ctx.dataset,
-    mirror,
+    mirror_options,
     float(rho),
   )
+
+
+def _ndkeys_options(meta: dict[str, float | str | int], key: str, default: str) -> str:
+  value = meta.get(key, default)
+  return str(value)
 
 
 def build_kde_model(target: ROOT.TH2, meta: dict[str, float | str | int]) -> KdeModel:
@@ -150,18 +237,20 @@ def build_kde_model(target: ROOT.TH2, meta: dict[str, float | str | int]) -> Kde
   alpha = float(meta["alpha"])
   use_linear_combo = bool(meta.get("linear_combo", 0))
   mix = float(meta.get("mix", 1.0))
+  opt_no_mirror = _ndkeys_options(meta, "ndkeys_no_mirror", NDKEYS_NO_MIRROR)
+  opt_mirror = _ndkeys_options(meta, "ndkeys_mirror", NDKEYS_MIRROR_BOTH)
 
   if use_linear_combo:
     pdf_unmirrored = make_ndkeys_pdf(
       "plot_kde_unmirrored",
       ctx,
-      mirror=MIRROR_NO,
+      mirror_options=opt_no_mirror,
       rho=rho,
     )
     pdf_mirrored = make_ndkeys_pdf(
       "plot_kde_mirrored",
       ctx,
-      mirror=MIRROR_BOTH,
+      mirror_options=opt_mirror,
       rho=rho,
     )
     return KdeModel(
@@ -176,7 +265,7 @@ def build_kde_model(target: ROOT.TH2, meta: dict[str, float | str | int]) -> Kde
   pdf_single = make_ndkeys_pdf(
     "plot_kde_single",
     ctx,
-    mirror=MIRROR_BOTH,
+    mirror_options=opt_mirror,
     rho=rho,
   )
   return KdeModel(
@@ -261,25 +350,35 @@ def _hist_axis_centers(axis: ROOT.TAxis) -> list[float]:
   return [axis.GetBinCenter(i) for i in range(1, axis.GetNbins() + 1)]
 
 
+def _axis_centers(lo: float, hi: float, n_bins: int) -> list[float]:
+  width = (hi - lo) / n_bins
+  return [lo + (i - 0.5) * width for i in range(1, n_bins + 1)]
+
+
 def kde_projection_x(
   model: KdeModel,
   ref_hist: ROOT.TH2,
   name: str,
   *,
   n_bins: int = KDE_PLOT_BINS,
+  n_integrate: int = KDE_PLOT_BINS,
 ) -> ROOT.TH1D:
   """X marginal from direct PDF evaluation at many x, summed over y."""
   xlo = ref_hist.GetXaxis().GetXmin()
   xhi = ref_hist.GetXaxis().GetXmax()
+  ylo = ref_hist.GetYaxis().GetXmin()
+  yhi = ref_hist.GetYaxis().GetXmax()
   out = ROOT.TH1D(name, name, n_bins, xlo, xhi)
   out.SetDirectory(0)
   out.SetStats(0)
   out._hold_model = model
 
-  y_values = _hist_axis_centers(ref_hist.GetYaxis())
+  y_values = _axis_centers(ylo, yhi, n_integrate)
+  y_scale = ref_hist.GetNbinsY() / n_integrate
   for ix in range(1, n_bins + 1):
     x = out.GetXaxis().GetBinCenter(ix)
-    out.SetBinContent(ix, sum(model.scaled_at(x, y) for y in y_values))
+    marginal = sum(model.scaled_at(x, y) for y in y_values) * y_scale
+    out.SetBinContent(ix, marginal)
 
   return out
 
@@ -290,19 +389,24 @@ def kde_projection_y(
   name: str,
   *,
   n_bins: int = KDE_PLOT_BINS,
+  n_integrate: int = KDE_PLOT_BINS,
 ) -> ROOT.TH1D:
   """Y marginal from direct PDF evaluation at many y, summed over x."""
   ylo = ref_hist.GetYaxis().GetXmin()
   yhi = ref_hist.GetYaxis().GetXmax()
+  xlo = ref_hist.GetXaxis().GetXmin()
+  xhi = ref_hist.GetXaxis().GetXmax()
   out = ROOT.TH1D(name, name, n_bins, ylo, yhi)
   out.SetDirectory(0)
   out.SetStats(0)
   out._hold_model = model
 
-  x_values = _hist_axis_centers(ref_hist.GetXaxis())
+  x_values = _axis_centers(xlo, xhi, n_integrate)
+  x_scale = ref_hist.GetNbinsX() / n_integrate
   for iy in range(1, n_bins + 1):
     y = out.GetXaxis().GetBinCenter(iy)
-    out.SetBinContent(iy, sum(model.scaled_at(x, y) for x in x_values))
+    marginal = sum(model.scaled_at(x, y) for x in x_values) * x_scale
+    out.SetBinContent(iy, marginal)
 
   return out
 
@@ -469,6 +573,7 @@ def plot_ratio(
 
 def _draw_stats_and_params(
   pad: ROOT.TPad,
+  target: ROOT.TH2,
   hist_stats: Th2Stats,
   kde_stats: Th2Stats,
   meta: dict[str, float | str | int],
@@ -484,6 +589,7 @@ def _draw_stats_and_params(
 
   alpha = float(meta["alpha"])
   rho = float(meta["rho"])
+  bw_x, bw_y = ndkeys_bandwidths(target, rho)
   chi2 = float(meta["chi2"])
   ndf = float(meta["ndf"])
   rchi2 = float(meta.get("reduced_chi2", chi2 / max(ndf, 1)))
@@ -491,14 +597,14 @@ def _draw_stats_and_params(
   latex = ROOT.TLatex()
   latex.SetNDC()
   latex.SetTextFont(42)
-  latex.SetTextSize(0.1)
+  latex.SetTextSize(0.15)
 
   x_label = 0.10
   x_int = 0.24
-  x_mx = 0.30
-  x_my = 0.36
-  y_title = 0.85
-  y_header = 0.7
+  x_mx = 0.34
+  x_my = 0.44
+  y_title = 0.95
+  y_header = 0.8
   y_hist = 0.55
 
   latex.SetTextAlign(23)
@@ -509,18 +615,18 @@ def _draw_stats_and_params(
 
   latex.SetTextAlign(13)
   latex.DrawLatex(x_label, y_hist, "histogram")
-  latex.DrawLatex(x_label, y_hist - 0.12, "KDE")
-  latex.DrawLatex(x_label, y_hist - 0.24, "difference")
+  latex.DrawLatex(x_label, y_hist - 0.2, "KDE")
+  latex.DrawLatex(x_label, y_hist - 0.4, "difference")
 
   latex.SetTextAlign(23)
   for row, stats in enumerate((hist_stats, kde_stats, delta)):
-    y = y_hist - 0.12 * row
+    y = y_hist - 0.2 * row
     latex.DrawLatex(x_int, y, f"{stats.integral:.4g}")
     latex.DrawLatex(x_mx, y, f"{stats.mean_x:.4g}")
     latex.DrawLatex(x_my, y, f"{stats.mean_y:.4g}")
 
   param_lines = [
-    f"#rho = {rho:.5g},  #alpha = {alpha:.5g}",
+    f"h_{{x}} = {bw_x:.5g},  h_{{y}} = {bw_y:.5g},  #alpha = {alpha:.5g}",
     f"#chi^{{2}} = {chi2:.4g},  #chi^{{2}}/ndf = {rchi2:.4g},  ndf = {ndf:.0f}",
   ]
   if meta.get("linear_combo", 0):
@@ -528,12 +634,10 @@ def _draw_stats_and_params(
     param_lines.append(
       f"mix = {mix:.4g} (unmirrored),  {1.0 - mix:.4g} (mirrored)"
     )
-  if "pdf" in meta:
-    param_lines.append(f"pdf = {meta['pdf']}")
 
   y_param = 0.78
   latex.SetTextAlign(12)
-  latex.SetTextSize(0.10)
+  latex.SetTextSize(0.15)
   for line in param_lines:
     latex.DrawLatex(0.58, y_param, line)
     y_param -= 0.20
@@ -566,7 +670,7 @@ def plot_overlay(
 
   pad_left.cd()
   _configure_surf_canvas(pad_left)
-  data.SetTitle("Data with #alpha#timesKDE(x,y) surface")
+  data.SetTitle("Weighted, adaptive, mirrored/unmirrored KDE")
   axis_titles = _style_surf_hist(data, line_color=ROOT.kBlue + 1)
   kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=2)
   data.Draw("LEGO")
@@ -578,8 +682,8 @@ def plot_overlay(
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
   leg.SetTextSize(0.04)
-  leg.AddEntry(data, "Data", "l")
-  leg.AddEntry(kde_surf, "#alpha#timesKDE(x,y)", "l")
+  leg.AddEntry(data, "Data", "l").SetLineWidth(4)
+  leg.AddEntry(kde_surf, "#alpha#timesKDE(x,y)", "l").SetLineWidth(4)
   leg.Draw()
 
   pad_right.cd()
@@ -589,7 +693,7 @@ def plot_overlay(
   kde_only_surf.Draw("SURF")
   _draw_surf3d_axis_titles(*kde_axes)
 
-  _draw_stats_and_params(pad_info, hist_stats, kde_stats, meta)
+  _draw_stats_and_params(pad_info, target, hist_stats, kde_stats, meta)
 
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -631,6 +735,22 @@ def _draw_projection_panel(
   leg.Draw()
 
 
+def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
+  # #region agent log
+  entry = {
+    "sessionId": "8940bd",
+    "runId": os.environ.get("DEBUG_RUN_ID", "post-fix"),
+    "hypothesisId": hypothesis_id,
+    "location": location,
+    "message": message,
+    "data": data,
+    "timestamp": int(time.time() * 1000),
+  }
+  with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
+    log_file.write(json.dumps(entry) + "\n")
+  # #endregion
+
+
 def plot_projections(
   target: ROOT.TH2,
   kde_model: KdeModel,
@@ -644,6 +764,31 @@ def plot_projections(
   hy_data = target.ProjectionY(f"{target.GetName()}_py_data", 0, -1, proj_opt)
   hx_kde = kde_projection_x(kde_model, target, f"{target.GetName()}_px_kde")
   hy_kde = kde_projection_y(kde_model, target, f"{target.GetName()}_py_kde")
+
+  # #region agent log
+  x_probe = 0.0
+  x_bin = hx_data.GetXaxis().FindBin(x_probe)
+  y_bin = hy_data.GetXaxis().FindBin(x_probe)
+  _debug_log(
+    "H1-H2",
+    "plot_2d_kde.py:plot_projections",
+    "projection scale check",
+    {
+      "x_probe": x_probe,
+      "data_px": hx_data.GetBinContent(x_bin),
+      "kde_px": hx_kde.GetBinContent(hx_kde.GetXaxis().FindBin(x_probe)),
+      "data_py": hy_data.GetBinContent(y_bin),
+      "kde_py": hy_kde.GetBinContent(hy_kde.GetXaxis().FindBin(x_probe)),
+      "sum_data_px": hx_data.Integral(),
+      "sum_kde_px": hx_kde.Integral(),
+      "sum_data_py": hy_data.Integral(),
+      "sum_kde_py": hy_kde.Integral(),
+      "n_integrate": KDE_PLOT_BINS,
+      "y_scale": target.GetNbinsY() / KDE_PLOT_BINS,
+      "x_scale": target.GetNbinsX() / KDE_PLOT_BINS,
+    },
+  )
+  # #endregion
 
   for h in (hx_data, hy_data, hx_kde, hy_kde):
     h.SetDirectory(0)
@@ -668,14 +813,14 @@ def plot_projections(
   pad_x.SetGridy()
   pad_x.SetLeftMargin(0.12)
   pad_x.SetBottomMargin(0.12)
-  _draw_projection_panel(hx_data, hx_kde, "X projection")
+  _draw_projection_panel(hx_data, hx_kde, "2D KDE X projection")
 
   canvas.cd(2)
   pad_y = canvas.GetPad(2)
   pad_y.SetGridy()
   pad_y.SetLeftMargin(0.12)
   pad_y.SetBottomMargin(0.12)
-  _draw_projection_panel(hy_data, hy_kde, "Y projection")
+  _draw_projection_panel(hy_data, hy_kde, "2D KDE Y projection")
 
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -685,6 +830,8 @@ def plot_projections(
 def main() -> int:
   show = "--show" in sys.argv
   target, _template, meta, hist_stats, kde_stats = load_fit_objects(FIT_ROOT_FILE)
+  rho = float(meta["rho"])
+  print_ndkeys_bandwidths(target, rho)
   kde_model = build_kde_model(target, meta)
   kde_fine = kde_plot_hist(kde_model, "kde_fine_plot")
   kde_on_data = evaluate_kde_on_hist_grid(kde_model, target, "kde_on_data_plot")

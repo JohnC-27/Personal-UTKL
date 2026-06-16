@@ -9,7 +9,7 @@ mm1 = nominal_file.Get("nominalxyposMM1")
 mm2 = nominal_file.Get("nominalxyposMM2")
 mm3 = nominal_file.Get("nominalxyposMM3")
 
-c1 = ROOT.TCanvas("c1", "nominal xy pos MM1,2,3", 1500, 500)
+c1 = ROOT.TCanvas("c1", "nominal xy pos MM1,2,3", 3000, 1000)
 c1.Divide(3, 1)
 
 for i, h in enumerate([mm1, mm2, mm3], 1):

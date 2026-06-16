@@ -80,16 +80,16 @@ def _draw_stats_table(
   latex = ROOT.TLatex()
   latex.SetNDC()
   latex.SetTextFont(42)
-  latex.SetTextSize(0.024)
+  latex.SetTextSize(0.035)
 
-  x_label = 0.36
+  x_label = 0.3
   x_mean = 0.50
   x_std = 0.64
-  y_title = 0.55
-  y_header = 0.51
-  y_hist = 0.47
-  y_kde = 0.44
-  y_delta = 0.41
+  y_title = 0.7
+  y_header = 0.61
+  y_hist = 0.55
+  y_kde = 0.5
+  y_delta = 0.45
 
   latex.SetTextAlign(23)
   latex.DrawLatex(0.50, y_title, f"Statistics ({unit})")
@@ -229,6 +229,13 @@ def plot_fit(
 ) -> None:
   alpha = meta["alpha"]
   rho = meta["rho"]
+  if "bandwidth" in meta:
+    bandwidth = meta["bandwidth"]
+  elif "h_0" in meta:
+    # Older files stored GetFixedWeight() under h_0 (already rho*h_0).
+    bandwidth = meta["h_0"]
+  else:
+    bandwidth = 0.0
   chi2 = meta["chi2"]
   ndf = meta["ndf"]
   rchi2 = meta.get("reduced_chi2", chi2 / max(ndf, 1))
@@ -269,7 +276,7 @@ def plot_fit(
   leg = ROOT.TLegend(0.7, 0.8, 0.88, 0.88)
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
-  leg.SetTextSize(0.028)
+  leg.SetTextSize(0.035)
   leg.AddEntry(target, "Data", "lep")
   leg.AddEntry(kde_curve, "#alpha#timesKDE(x)", "l")
   leg.Draw()
@@ -296,21 +303,28 @@ def plot_fit(
   leg_kde = ROOT.TLegend(0.4, 0.6, 0.88, 0.88)
   leg_kde.SetBorderSize(0)
   leg_kde.SetFillStyle(0)
-  leg_kde.SetTextSize(0.028)
+  leg_kde.SetTextSize(0.035)
   leg_kde.AddEntry(kde_curve, "#alpha#timesKDE(x)", "l")
   leg_kde.Draw()
 
   latex = ROOT.TLatex()
   latex.SetNDC()
   latex.SetTextFont(42)
-  latex.SetTextSize(0.028)
-  latex.DrawLatex(0.4, 0.66, f"#rho={rho:.5g}, #alpha={alpha:.5g}")
-  latex.DrawLatex(0.4, 0.62, f"#chi^{{2}}={chi2:.3f}, #chi^{{2}}/ndf={rchi2:.3f}")
+  latex.SetTextSize(0.035)
+  if bandwidth > 0:
+    latex.DrawLatex(
+      0.3,
+      0.66,
+      f"Bandwidth={bandwidth:.5g}, #alpha={alpha:.5g}",
+    )
+  else:
+    latex.DrawLatex(0.35, 0.66, f"#rho={rho:.5g}, #alpha={alpha:.5g}")
+  latex.DrawLatex(0.35, 0.6, f"#chi^{{2}}={chi2:.3f}, #chi^{{2}}/ndf={rchi2:.3f}")
   if meta.get("linear_combo", 0):
     mix = meta["mix"]
     latex.DrawLatex(
-      0.3,
-      0.58,
+      0.25,
+      0.54,
       f"mix={mix:.3g} (unmirrored), {1.0 - mix:.3g} (mirrored)",
     )
 

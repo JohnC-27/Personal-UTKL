@@ -25,7 +25,7 @@ INPUT_ROOT_FILE = os.path.join(
 )
   # Capital N for Mo's hists. lower for nominal.root
 TARGET_HIST_NAME = "nominalxyposMM1"  # TH2D; projected to X below
-PROJECTION_AXIS = "x"  # "x" or "y" for TH2 projections; ignored for TH1
+PROJECTION_AXIS = "y"  # "x" or "y" for TH2 projections; ignored for TH1
 
 OUTPUT_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", "weighted_fixed_kde.root"
@@ -694,6 +694,7 @@ def save_scan_results(
   template_hist: ROOT.TH1,
   ndf: int,
   *,
+  bandwidth: float,
   use_linear_combo: bool = USE_LINEAR_COMBO,
   hist_stats: DistributionStats | None = None,
   kde_stats: DistributionStats | None = None,
@@ -723,6 +724,7 @@ def save_scan_results(
   meta_parts = [
     f"linear_combo={int(use_linear_combo)}",
     f"rho={best.rho}",
+    f"bandwidth={bandwidth}",
     f"alpha={best.alpha}",
     f"chi2={best.chi2}",
     f"ndf={ndf}",
@@ -935,10 +937,12 @@ def main() -> int:
   # print_chi2_contributions(target, raw_shape, best.alpha, exclude_first_last=True)
 
   if use_linear_combo:
-    print("h_0 bandwidth (unmirrored): ", kde_unmirrored.GetFixedWeight())
-    print("h_0 bandwidth (mirrored): ", kde_mirrored.GetFixedWeight())
+    bandwidth = kde_unmirrored.GetFixedWeight()
+    print("bandwidth rho*h_0 (unmirrored): ", bandwidth)
+    print("bandwidth rho*h_0 (mirrored): ", kde_mirrored.GetFixedWeight())
   else:
-    print("h_0 bandwidth: ", kde_mirrored.GetFixedWeight())
+    bandwidth = kde_mirrored.GetFixedWeight()
+    print("bandwidth rho*h_0: ", bandwidth)
 
   out_dir = os.path.dirname(os.path.abspath(OUTPUT_ROOT_FILE))
   os.makedirs(out_dir, exist_ok=True)
@@ -953,6 +957,7 @@ def main() -> int:
     raw_shape,
     template,
     ndf,
+    bandwidth=bandwidth,
     use_linear_combo=use_linear_combo,
     hist_stats=hist_stats,
     kde_stats=kde_stats,

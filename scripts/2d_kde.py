@@ -29,14 +29,15 @@ OUTPUT_ROOT_FILE = os.path.join(
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible
 # lattice ripples on the 8 cm histogram grid; ~1.4 is much smoother.
-RHO_SCAN_MIN = 2
-RHO_SCAN_MAX = 2
+RHO_SCAN_MIN = 3.5
+RHO_SCAN_MAX = 3.5
 RHO_SCAN_STEP = 0.1
 
-USE_LINEAR_COMBO = False
+USE_LINEAR_COMBO = True
 
-MIRROR_NO = ROOT.RooNDKeysPdf.NoMirror
-MIRROR_BOTH = ROOT.RooNDKeysPdf.MirrorBoth
+# 2D RooNDKeysPdf(RooArgSet, ...) takes an options string, not the legacy Mirror enum.
+NDKEYS_NO_MIRROR = "a"
+NDKEYS_MIRROR_BOTH = "am"
 
 
 @dataclass
@@ -141,7 +142,7 @@ def make_ndkeys_pdf(
   name: str,
   ctx: KdeFitContext,
   *,
-  mirror: int,
+  mirror_options: str,
   rho: float,
 ) -> ROOT.RooNDKeysPdf:
   return ROOT.RooNDKeysPdf(
@@ -149,7 +150,7 @@ def make_ndkeys_pdf(
     name,
     ctx.argset,
     ctx.dataset,
-    mirror,
+    mirror_options,
     float(rho),
   )
 
@@ -268,13 +269,13 @@ def ndkeys_pair_at_rho(
   pdf_unmirrored = make_ndkeys_pdf(
     f"kde_unmirrored_rho{rho:.4g}",
     ctx,
-    mirror=MIRROR_NO,
+    mirror_options=NDKEYS_NO_MIRROR,
     rho=rho,
   )
   pdf_mirrored = make_ndkeys_pdf(
     f"kde_mirrored_rho{rho:.4g}",
     ctx,
-    mirror=MIRROR_BOTH,
+    mirror_options=NDKEYS_MIRROR_BOTH,
     rho=rho,
   )
   th2_unmirrored = th2_pdf_shape(
@@ -370,7 +371,7 @@ def evaluate_at_rho(
   use_linear_combo: bool = USE_LINEAR_COMBO,
 ) -> Tuple[float, float, float, float, ROOT.TH2D | None]:
   if not use_linear_combo:
-    pdf = make_ndkeys_pdf("kde_single", ctx, mirror=MIRROR_BOTH, rho=rho)
+    pdf = make_ndkeys_pdf("kde_single", ctx, mirror_options=NDKEYS_MIRROR_BOTH, rho=rho)
     shape = th2_pdf_shape(pdf, ctx.target, ctx, f"kde_shape_rho{rho:.4g}")
     alpha = optimal_alpha(shape, ctx.target)
     chi2 = chi_squared_vs_hist(shape, ctx.target, alpha)
@@ -456,7 +457,7 @@ def scaled_kde_th2(
 ) -> Tuple[ROOT.TH2D, ROOT.TH2D]:
   """Return (shape, alpha * shape) TH2 templates at the best scan point."""
   if not use_linear_combo:
-    pdf = make_ndkeys_pdf("kde_single_best", ctx, mirror=MIRROR_BOTH, rho=rho)
+    pdf = make_ndkeys_pdf("kde_single_best", ctx, mirror_options=NDKEYS_MIRROR_BOTH, rho=rho)
     shape = th2_pdf_shape(pdf, ctx.target, ctx, "kde_shape")
     template = shape.Clone("kde_template")
     template.SetDirectory(0)
@@ -590,6 +591,8 @@ def save_results(
     f"rho_scan_min={RHO_SCAN_MIN}",
     f"rho_scan_max={RHO_SCAN_MAX}",
     f"rho_scan_step={RHO_SCAN_STEP}",
+    f"ndkeys_no_mirror={NDKEYS_NO_MIRROR}",
+    f"ndkeys_mirror={NDKEYS_MIRROR_BOTH}",
     "pdf=RooNDKeysPdf",
   ]
   if use_linear_combo:
