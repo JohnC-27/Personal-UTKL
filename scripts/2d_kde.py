@@ -19,7 +19,7 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 ROOT.gROOT.SetBatch(True)
 
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "nominal.root"
+  os.path.dirname(__file__), "..", "root_files", "nominal_corrected.root"
 )
 TARGET_HIST_NAME = "nominalxyposMM1"
 

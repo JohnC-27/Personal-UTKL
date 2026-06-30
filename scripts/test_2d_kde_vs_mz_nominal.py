@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
 Compare the 2D KDE shape from 2d_kde.root against rebinned NominalxyposMM1 TH2D
-histograms in the mz_nominal 2000-bin ROOT files.
+histograms in the mz_nominal *_corrected.root files (y trimmed to 80 cm).
 
-The KDE was trained on nominalxyposMM1 in nominal.root (see 2d_kde.py). This script
-rebins the high-resolution mz_nominal histograms, profiles alpha against the full
-2D histogram, and writes one high-resolution PNG per run with overlay, ratio, and
-X/Y projection panels (matching plot_2d_kde.py, without a KDE-only pad).
+The KDE was trained on nominalxyposMM1 in nominal_corrected.root (see 2d_kde.py).
+This script rebins the high-resolution mz_nominal histograms (2000x1800), profiles
+alpha against the full 2D histogram, and writes one high-resolution PNG per run
+with overlay, ratio, and X/Y projection panels (matching plot_2d_kde.py, without
+a KDE-only pad).
 """
 
 import array
@@ -21,23 +22,26 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-# Rebinned grid size (must evenly divide SOURCE_BINS).
-N_OUTPUT_BINS = 100
+# Rebinned grid size (must evenly divide SOURCE_BINS_X / SOURCE_BINS_Y).
+N_OUTPUT_BINS_X = 100
+N_OUTPUT_BINS_Y = 90
 
-SOURCE_BINS = 2000
+SOURCE_BINS_X = 2000
+SOURCE_BINS_Y = 1800
 HIST_NAME = "NominalxyposMM1"
+NOMINAL_HIST_NAME = "nominalxyposMM1"
 
 KDE_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", "2d_kde.root"
 )
 NOMINAL_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "nominal.root"
+  os.path.dirname(__file__), "..", "root_files", "nominal_corrected.root"
 )
 RUN1_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run1.root"
+  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run1_corrected.root"
 )
 RUN2_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run2.root"
+  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run2_corrected.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
@@ -190,19 +194,31 @@ def verify_sumw2_errors(hist: ROOT.TH2, label: str) -> bool:
   return ok
 
 
-def rebin_histogram2d(hist: ROOT.TH2, n_output_bins: int, name: str) -> ROOT.TH2:
-  if SOURCE_BINS % n_output_bins != 0:
+def rebin_histogram2d(
+  hist: ROOT.TH2,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
+  name: str,
+) -> ROOT.TH2:
+  nbx = hist.GetNbinsX()
+  nby = hist.GetNbinsY()
+  if nbx % n_output_bins_x != 0:
     raise ValueError(
-      f"N_OUTPUT_BINS={n_output_bins} must evenly divide SOURCE_BINS={SOURCE_BINS}"
+      f"N_OUTPUT_BINS_X={n_output_bins_x} must evenly divide source x bins ({nbx})"
     )
-  if hist.GetNbinsX() != SOURCE_BINS or hist.GetNbinsY() != SOURCE_BINS:
+  if nby % n_output_bins_y != 0:
     raise ValueError(
-      f"expected {SOURCE_BINS}x{SOURCE_BINS} bins before rebinning, got "
-      f"{hist.GetNbinsX()}x{hist.GetNbinsY()}"
+      f"N_OUTPUT_BINS_Y={n_output_bins_y} must evenly divide source y bins ({nby})"
+    )
+  if nbx != SOURCE_BINS_X or nby != SOURCE_BINS_Y:
+    raise ValueError(
+      f"expected {SOURCE_BINS_X}x{SOURCE_BINS_Y} bins before rebinning, got "
+      f"{nbx}x{nby}"
     )
 
-  factor = SOURCE_BINS // n_output_bins
-  rebinned = hist.Rebin2D(factor, factor, name)
+  factor_x = nbx // n_output_bins_x
+  factor_y = nby // n_output_bins_y
+  rebinned = hist.Rebin2D(factor_x, factor_y, name)
   rebinned.SetDirectory(0)
   return rebinned
 
@@ -617,7 +633,8 @@ def _draw_fit_params(
   mix: float,
   linear_combo: bool,
   run_label: str,
-  n_output_bins: int,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
 ) -> ROOT.TLatex:
   pad.cd()
   latex = ROOT.TLatex()
@@ -629,7 +646,7 @@ def _draw_fit_params(
   chi2 = fit["chi2"]
   reduced = fit["reduced_chi2"]
   lines = [
-    f"{run_label} ({n_output_bins}#times{n_output_bins} bins)",
+    f"{run_label} ({n_output_bins_x}#times{n_output_bins_y} bins)",
   ]
   if linear_combo:
     lines.append(f"#rho={rho:.5g}, mix={mix:.5g}, #alpha={alpha:.5g}")
@@ -650,7 +667,8 @@ def plot_combined_summary(
   rho: float,
   mix: float,
   linear_combo: bool,
-  n_output_bins: int,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
   outfile: str,
 ) -> None:
   template = fit["template"]
@@ -695,7 +713,8 @@ def plot_combined_summary(
       mix,
       linear_combo,
       run_label,
-      n_output_bins,
+      n_output_bins_x,
+      n_output_bins_y,
     )
   )
   canvas._keepalive = keepalive
@@ -707,22 +726,37 @@ def plot_combined_summary(
   print(f"Saved {outfile}")
 
 
-def output_png_path(run_label: str, n_output_bins: int) -> str:
+def output_png_path(
+  run_label: str,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
+) -> str:
   return os.path.join(
     OUTPUT_DIR,
-    f"2d_kde_vs_mz_nominal_{run_label}_{n_output_bins}x{n_output_bins}bin.png",
+    f"2d_kde_vs_mz_nominal_{run_label}_"
+    f"{n_output_bins_x}x{n_output_bins_y}bin.pdf",
   )
 
 
 def main() -> int:
-  if SOURCE_BINS % N_OUTPUT_BINS != 0:
+  if SOURCE_BINS_X % N_OUTPUT_BINS_X != 0:
     raise ValueError(
-      f"N_OUTPUT_BINS={N_OUTPUT_BINS} must evenly divide SOURCE_BINS={SOURCE_BINS}"
+      f"N_OUTPUT_BINS_X={N_OUTPUT_BINS_X} must evenly divide "
+      f"SOURCE_BINS_X={SOURCE_BINS_X}"
+    )
+  if SOURCE_BINS_Y % N_OUTPUT_BINS_Y != 0:
+    raise ValueError(
+      f"N_OUTPUT_BINS_Y={N_OUTPUT_BINS_Y} must evenly divide "
+      f"SOURCE_BINS_Y={SOURCE_BINS_Y}"
     )
 
-  rebin_factor = SOURCE_BINS // N_OUTPUT_BINS
-  print(f"Combining {SOURCE_BINS}x{SOURCE_BINS} bins -> {N_OUTPUT_BINS}x{N_OUTPUT_BINS} "
-        f"(factor {rebin_factor})")
+  rebin_factor_x = SOURCE_BINS_X // N_OUTPUT_BINS_X
+  rebin_factor_y = SOURCE_BINS_Y // N_OUTPUT_BINS_Y
+  print(
+    f"Combining {SOURCE_BINS_X}x{SOURCE_BINS_Y} bins -> "
+    f"{N_OUTPUT_BINS_X}x{N_OUTPUT_BINS_Y} "
+    f"(factors {rebin_factor_x}x{rebin_factor_y})"
+  )
   print(f"Loading 2D KDE shape from {KDE_ROOT_FILE}")
   kde_shape, meta = load_kde_shape(KDE_ROOT_FILE)
   rho = meta["rho"]
@@ -732,13 +766,17 @@ def main() -> int:
   train_chi2 = meta.get("chi2", float("nan"))
   train_ndf = meta.get("ndf", float("nan"))
   print(
-    f"Training fit (nominal.root): rho={rho:.6g}, mix={mix:.6g}, alpha={train_alpha:.6g}, "
+    f"Training fit (nominal_corrected.root): rho={rho:.6g}, mix={mix:.6g}, "
+    f"alpha={train_alpha:.6g}, "
     f"chi2/ndf={train_chi2 / max(train_ndf, 1):.6g} (ndf={train_ndf:.0f})"
   )
 
-  print(f"\nReference check on nominal.root {HIST_NAME!r} (training target)")
-  nominal_ref = open_histogram2d(NOMINAL_ROOT_FILE, "nominalxyposMM1")
-  verify_sumw2_errors(nominal_ref, "nominal.root (reference)")
+  print(
+    f"\nReference check on nominal_corrected.root {NOMINAL_HIST_NAME!r} "
+    "(training target)"
+  )
+  nominal_ref = open_histogram2d(NOMINAL_ROOT_FILE, NOMINAL_HIST_NAME)
+  verify_sumw2_errors(nominal_ref, "nominal_corrected.root (reference)")
   nominal_fit = evaluate_fit("nominal_ref", nominal_ref, kde_shape)
 
   datasets = [
@@ -753,16 +791,20 @@ def main() -> int:
     print(f"\nReading {HIST_NAME!r} from {path}")
     raw = open_histogram2d(path, HIST_NAME)
     print(f"  raw: {raw.GetNbinsX()}x{raw.GetNbinsY()} bins")
-    all_sumw2_ok &= verify_sumw2_errors(raw, f"{label} ({SOURCE_BINS}x{SOURCE_BINS} bins)")
+    all_sumw2_ok &= verify_sumw2_errors(
+      raw,
+      f"{label} ({SOURCE_BINS_X}x{SOURCE_BINS_Y} bins)",
+    )
 
     rebinned[label] = rebin_histogram2d(
       raw,
-      N_OUTPUT_BINS,
-      f"{label}_{N_OUTPUT_BINS}x{N_OUTPUT_BINS}",
+      N_OUTPUT_BINS_X,
+      N_OUTPUT_BINS_Y,
+      f"{label}_{N_OUTPUT_BINS_X}x{N_OUTPUT_BINS_Y}",
     )
     all_sumw2_ok &= verify_sumw2_errors(
       rebinned[label],
-      f"{label} ({N_OUTPUT_BINS}x{N_OUTPUT_BINS} bins, after rebin)",
+      f"{label} ({N_OUTPUT_BINS_X}x{N_OUTPUT_BINS_Y} bins, after rebin)",
     )
 
   if not all_sumw2_ok:
@@ -772,7 +814,8 @@ def main() -> int:
   run2_fit = evaluate_fit("run2", rebinned["run2"], kde_shape)
 
   print(
-    f"\nTraining vs nominal.root: chi2/ndf={nominal_fit['reduced_chi2']:.6g} "
+    f"\nTraining vs nominal_corrected.root: chi2/ndf="
+    f"{nominal_fit['reduced_chi2']:.6g} "
     f"(profiled alpha={nominal_fit['alpha']:.6g})"
   )
 
@@ -788,8 +831,9 @@ def main() -> int:
       rho,
       mix,
       linear_combo,
-      N_OUTPUT_BINS,
-      output_png_path(run_label, N_OUTPUT_BINS),
+      N_OUTPUT_BINS_X,
+      N_OUTPUT_BINS_Y,
+      output_png_path(run_label, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y),
     )
   return 0
 

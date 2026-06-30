@@ -12,17 +12,20 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1_corrected.root"
 )
+
+
+
 HIST_NAME = "NominalxyposMM1"
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "root_files")
-OUTPUT_2D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_colz.png")
-OUTPUT_3D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_surf3d.png")
-OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "nominalxyposMM1_x_y_proj.png")
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
+OUTPUT_2D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_colz.pdf")
+OUTPUT_3D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_surf3d.pdf")
+OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "nominalxyposMM1_x_y_proj.pdf")
 
 REBIN = True
-SOURCE_BINS = 2000
-N_OUTPUT_BINS = 100
+N_OUTPUT_BINS_X = 100
+N_OUTPUT_BINS_Y = 90
 
 def load_histogram(filepath: str, hist_name: str) -> ROOT.TH2:
   tfile = ROOT.TFile.Open(filepath, "READ")
@@ -39,21 +42,33 @@ def load_histogram(filepath: str, hist_name: str) -> ROOT.TH2:
   return hist
 
 
-def rebin_histogram(hist: ROOT.TH2, n_output_bins: int) -> ROOT.TH2:
-  if SOURCE_BINS % n_output_bins != 0:
+def rebin_histogram(
+  hist: ROOT.TH2,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
+) -> ROOT.TH2:
+  nbx = hist.GetNbinsX()
+  nby = hist.GetNbinsY()
+  if nbx % n_output_bins_x != 0:
     raise ValueError(
-      f"N_OUTPUT_BINS={n_output_bins} must evenly divide SOURCE_BINS={SOURCE_BINS}"
+      f"N_OUTPUT_BINS_X={n_output_bins_x} must evenly divide source x bins ({nbx})"
     )
-  if hist.GetNbinsX() != SOURCE_BINS or hist.GetNbinsY() != SOURCE_BINS:
+  if nby % n_output_bins_y != 0:
     raise ValueError(
-      f"expected {SOURCE_BINS}x{SOURCE_BINS} bins before rebinning, "
-      f"got {hist.GetNbinsX()}x{hist.GetNbinsY()}"
+      f"N_OUTPUT_BINS_Y={n_output_bins_y} must evenly divide source y bins ({nby})"
     )
 
-  factor = SOURCE_BINS // n_output_bins
-  rebinned = hist.Rebin2D(factor, factor, f"{hist.GetName()}_rebinned")
+  factor_x = nbx // n_output_bins_x
+  factor_y = nby // n_output_bins_y
+  rebinned = hist.Rebin2D(factor_x, factor_y, f"{hist.GetName()}_rebinned")
   rebinned.SetDirectory(0)
   return rebinned
+
+
+def _hist_axis_ranges(hist: ROOT.TH2) -> tuple[float, float]:
+  x_range = hist.GetXaxis().GetXmax() - hist.GetXaxis().GetXmin()
+  y_range = hist.GetYaxis().GetXmax() - hist.GetYaxis().GetXmin()
+  return x_range, y_range
 
 
 def _style_histogram(hist: ROOT.TH2) -> None:
@@ -63,15 +78,24 @@ def _style_histogram(hist: ROOT.TH2) -> None:
   hist.GetZaxis().SetTitle(hist.GetZaxis().GetTitle() or "Entries")
 
 
+def _colz_canvas_size(hist: ROOT.TH2, width: int = 900) -> tuple[int, int]:
+  x_range, y_range = _hist_axis_ranges(hist)
+  if x_range <= 0:
+    return width, 800
+  height = max(int(width * y_range / x_range), 500)
+  return width, height
+
+
 def plot_colz(hist: ROOT.TH2, outfile: str) -> None:
   _style_histogram(hist)
 
-  canvas = ROOT.TCanvas("c_colz", "nominalxyposMM1 COLZ", 900, 800)
+  width, height = _colz_canvas_size(hist)
+  canvas = ROOT.TCanvas("c_colz", "nominalxyposMM1 COLZ", width, height)
   canvas.SetRightMargin(0.14)
   canvas.SetLeftMargin(0.12)
   canvas.SetBottomMargin(0.12)
 
-  hist.Draw("COLZ")
+  hist.Draw("LEGO")
   canvas.Update()
   canvas.SaveAs(outfile)
   print(f"Saved {outfile}")
@@ -185,8 +209,8 @@ def plot_projection(hist: ROOT.TH2, outfile: str) -> None:
 def main() -> int:
   show = "--show" in sys.argv
   hist = load_histogram(INPUT_ROOT_FILE, HIST_NAME)
-  if REBIN == True:
-    hist = rebin_histogram(hist, N_OUTPUT_BINS)
+  if REBIN:
+    hist = rebin_histogram(hist, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y)
 
   plot_colz(hist, OUTPUT_2D)
   plot_surf3d(hist, OUTPUT_3D)

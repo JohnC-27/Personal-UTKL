@@ -17,15 +17,18 @@ FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", "2d_kde.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, "2d_kde_overlay.png")
-OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, "2d_kde_projections.png")
-OUTPUT_RATIO = os.path.join(OUTPUT_DIR, "2d_kde_ratio.png")
+OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, "2d_kde_overlay.pdf")
+OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, "2d_kde_projections.pdf")
+OUTPUT_RATIO = os.path.join(OUTPUT_DIR, "2d_kde_ratio.pdf")
 
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
 
-# Direct RooNDKeysPdf evaluation grid for surfaces and projections.
+# Direct RooNDKeysPdf evaluation grid for 2D surfaces.
 KDE_PLOT_BINS = 200
+
+# 1D projection curves: direct PDF marginalization at many x/y sample points.
+KDE_PROJECTION_POINTS = 2000
 
 # 2D RooNDKeysPdf(RooArgSet, ...) takes an options string, not the legacy Mirror enum.
 NDKEYS_NO_MIRROR = "a"
@@ -72,6 +75,21 @@ class Th2Stats:
   integral: float
   mean_x: float
   mean_y: float
+
+
+@dataclass
+class Th1ProjectionStats:
+  integral_data: float
+  integral_kde: float
+  mean_data: float
+  mean_kde: float
+  chi2: float
+  ndf: int
+  mean_label: str
+
+  @property
+  def reduced_chi2(self) -> float:
+    return self.chi2 / max(self.ndf, 1)
 
 
 def parse_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
@@ -187,26 +205,6 @@ def ndkeys_bandwidths(target: ROOT.TH2, rho: float) -> tuple[float, float]:
   h0_y = silverman * sigma_y * n_factor
   return rho * h0_x, rho * h0_y
 
-
-def print_ndkeys_bandwidths(target: ROOT.TH2, rho: float) -> None:
-  """Print RooNDKeys Silverman-rule h0 and effective rho*h0 widths."""
-  n_eff, _mx, _my, sigma_x, sigma_y = _weighted_mean_std_from_th2(target)
-  if n_eff <= 0:
-    print("RooNDKeys bandwidths: unable to compute (empty histogram).")
-    return
-
-  d = 2.0
-  silverman = (4.0 / (d + 2.0)) ** (1.0 / (d + 4.0))
-  n_factor = n_eff ** (-1.0 / (d + 4.0))
-  h0_x = silverman * sigma_x * n_factor
-  h0_y = silverman * sigma_y * n_factor
-  bw_x, bw_y = ndkeys_bandwidths(target, rho)
-  print(
-    "RooNDKeys bandwidths (Silverman): "
-    f"n_eff={n_eff:.6g}, rho={rho:.6g}, "
-    f"h0_x={h0_x:.6g}, h0_y={h0_y:.6g}, "
-    f"h_x={bw_x:.6g}, h_y={bw_y:.6g}"
-  )
 
 
 def make_ndkeys_pdf(
@@ -350,65 +348,91 @@ def _hist_axis_centers(axis: ROOT.TAxis) -> list[float]:
   return [axis.GetBinCenter(i) for i in range(1, axis.GetNbins() + 1)]
 
 
-def _axis_centers(lo: float, hi: float, n_bins: int) -> list[float]:
-  width = (hi - lo) / n_bins
-  return [lo + (i - 0.5) * width for i in range(1, n_bins + 1)]
+def _axis_linspace(lo: float, hi: float, n_points: int) -> list[float]:
+  """Evenly spaced coordinates from lo through hi (inclusive)."""
+  if n_points <= 1:
+    return [(lo + hi) / 2.0]
+  step = (hi - lo) / (n_points - 1)
+  return [lo + i * step for i in range(n_points)]
 
 
-def kde_projection_x(
+def _kde_marginal_over_y(model: KdeModel, ref_hist: ROOT.TH2, x: float) -> float:
+  """Column sum at x using the reference histogram's y bin centers."""
+  return sum(
+    model.scaled_at(x, y)
+    for y in _hist_axis_centers(ref_hist.GetYaxis())
+  )
+
+
+def _kde_marginal_over_x(model: KdeModel, ref_hist: ROOT.TH2, y: float) -> float:
+  """Row sum at y using the reference histogram's x bin centers."""
+  return sum(
+    model.scaled_at(x, y)
+    for x in _hist_axis_centers(ref_hist.GetXaxis())
+  )
+
+
+def kde_projection_x_curve(
   model: KdeModel,
   ref_hist: ROOT.TH2,
   name: str,
   *,
-  n_bins: int = KDE_PLOT_BINS,
-  n_integrate: int = KDE_PLOT_BINS,
-) -> ROOT.TH1D:
-  """X marginal from direct PDF evaluation at many x, summed over y."""
+  n_points: int = KDE_PROJECTION_POINTS,
+) -> ROOT.TGraph:
+  """X marginal as a continuous curve via direct PDF evaluation."""
   xlo = ref_hist.GetXaxis().GetXmin()
   xhi = ref_hist.GetXaxis().GetXmax()
-  ylo = ref_hist.GetYaxis().GetXmin()
-  yhi = ref_hist.GetYaxis().GetXmax()
-  out = ROOT.TH1D(name, name, n_bins, xlo, xhi)
-  out.SetDirectory(0)
-  out.SetStats(0)
-  out._hold_model = model
+  x_values = _axis_linspace(xlo, xhi, n_points)
+  graph = ROOT.TGraph(n_points)
+  graph.SetName(name)
+  graph.SetTitle(name)
+  graph._hold_model = model
 
-  y_values = _axis_centers(ylo, yhi, n_integrate)
-  y_scale = ref_hist.GetNbinsY() / n_integrate
-  for ix in range(1, n_bins + 1):
-    x = out.GetXaxis().GetBinCenter(ix)
-    marginal = sum(model.scaled_at(x, y) for y in y_values) * y_scale
-    out.SetBinContent(ix, marginal)
+  for i, x in enumerate(x_values):
+    graph.SetPoint(i, x, _kde_marginal_over_y(model, ref_hist, x))
 
-  return out
+  return graph
 
 
-def kde_projection_y(
+def kde_projection_y_curve(
   model: KdeModel,
   ref_hist: ROOT.TH2,
   name: str,
   *,
-  n_bins: int = KDE_PLOT_BINS,
-  n_integrate: int = KDE_PLOT_BINS,
-) -> ROOT.TH1D:
-  """Y marginal from direct PDF evaluation at many y, summed over x."""
+  n_points: int = KDE_PROJECTION_POINTS,
+) -> ROOT.TGraph:
+  """Y marginal as a continuous curve via direct PDF evaluation."""
   ylo = ref_hist.GetYaxis().GetXmin()
   yhi = ref_hist.GetYaxis().GetXmax()
-  xlo = ref_hist.GetXaxis().GetXmin()
-  xhi = ref_hist.GetXaxis().GetXmax()
-  out = ROOT.TH1D(name, name, n_bins, ylo, yhi)
-  out.SetDirectory(0)
-  out.SetStats(0)
-  out._hold_model = model
+  y_values = _axis_linspace(ylo, yhi, n_points)
+  graph = ROOT.TGraph(n_points)
+  graph.SetName(name)
+  graph.SetTitle(name)
+  graph._hold_model = model
 
-  x_values = _axis_centers(xlo, xhi, n_integrate)
-  x_scale = ref_hist.GetNbinsX() / n_integrate
-  for iy in range(1, n_bins + 1):
-    y = out.GetXaxis().GetBinCenter(iy)
-    marginal = sum(model.scaled_at(x, y) for x in x_values) * x_scale
-    out.SetBinContent(iy, marginal)
+  for i, y in enumerate(y_values):
+    graph.SetPoint(i, y, _kde_marginal_over_x(model, ref_hist, y))
 
-  return out
+  return graph
+
+
+def _graph_max_y(graph: ROOT.TGraph) -> float:
+  ymax = 0.0
+  for i in range(graph.GetN()):
+    ymax = max(ymax, graph.GetPointY(i))
+  return ymax
+
+
+def _graph_y_at_x(graph: ROOT.TGraph, x: float) -> float:
+  best_y = 0.0
+  best_dx = float("inf")
+  for i in range(graph.GetN()):
+    px = graph.GetPointX(i)
+    dx = abs(px - x)
+    if dx < best_dx:
+      best_dx = dx
+      best_y = graph.GetPointY(i)
+  return best_y
 
 
 def load_fit_objects(filepath: str):
@@ -544,8 +568,17 @@ def plot_ratio(
   ratio.SetTitle("KDE / Data;{};{};KDE / Data".format(xtitle, ytitle))
   ratio.GetZaxis().SetRangeUser(zmin, zmax)
   ratio.GetZaxis().SetTitle("KDE / Data")
+  ratio.GetZaxis().SetTitleOffset(1.5)
+  ratio.GetZaxis().SetLabelSize(0.03)
+
   ratio.GetXaxis().SetTitle(xtitle)
+  ratio.GetXaxis().SetTitleOffset(1.8)
+  ratio.GetXaxis().SetLabelSize(0.03)
+
   ratio.GetYaxis().SetTitle(ytitle)
+  ratio.GetYaxis().SetTitleOffset(1.8)
+  ratio.GetYaxis().SetLabelSize(0.03)
+
 
   _set_diverging_ratio_palette()
 
@@ -553,18 +586,21 @@ def plot_ratio(
   canvas.SetRightMargin(0.14)
   canvas.SetLeftMargin(0.12)
   canvas.SetBottomMargin(0.12)
-  ratio.Draw("COLZ")
+  #canvas.SetPhi(315)
+  ratio.Draw("LEGO")
 
-  latex = ROOT.TLatex()
-  latex.SetNDC(True)
-  latex.SetTextFont(42)
-  latex.SetTextSize(0.03)
-  latex.SetTextAlign(22)
-  latex.DrawLatex(
-    0.50,
-    0.92,
-    "blue: KDE < data   white: KDE = data   red: KDE > data",
-  )
+
+
+  #latex = ROOT.TLatex()
+  #latex.SetNDC(True)
+  #latex.SetTextFont(42)
+  #latex.SetTextSize(0.03)
+  #latex.SetTextAlign(22)
+  #latex.DrawLatex(
+  #  0.50,
+  #  0.92,
+  #  "blue: KDE < data   white: KDE = data   red: KDE > data",
+  #)
 
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -672,7 +708,7 @@ def plot_overlay(
   _configure_surf_canvas(pad_left)
   data.SetTitle("Weighted, adaptive, mirrored/unmirrored KDE")
   axis_titles = _style_surf_hist(data, line_color=ROOT.kBlue + 1)
-  kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=2)
+  kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=1)
   data.Draw("LEGO")
   kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.1)
   kde_surf.Draw("SURF SAME")
@@ -682,8 +718,8 @@ def plot_overlay(
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
   leg.SetTextSize(0.04)
-  leg.AddEntry(data, "Data", "l").SetLineWidth(4)
-  leg.AddEntry(kde_surf, "#alpha#timesKDE(x,y)", "l").SetLineWidth(4)
+  leg.AddEntry(data, "Data", "l").SetLineWidth(1)
+  leg.AddEntry(kde_surf, "#alpha#timesKDE(x,y)", "l").SetLineWidth(1)
   leg.Draw()
 
   pad_right.cd()
@@ -700,39 +736,280 @@ def plot_overlay(
   print(f"Saved {outfile}")
 
 
-def _style_projection_hist(hist: ROOT.TH1) -> None:
-  hist.SetLineColor(ROOT.kBlue + 1)
-  hist.SetLineWidth(2)
+def _style_projection_curve(curve: ROOT.TGraph) -> None:
+  curve.SetLineColor(ROOT.kBlue + 1)
+  curve.SetLineWidth(1)
 
 
-def _draw_projection_panel(
+def _hist_1d_stats(hist: ROOT.TH1) -> tuple[float, float]:
+  total = 0.0
+  weighted = 0.0
+  for i in range(1, hist.GetNbinsX() + 1):
+    content = hist.GetBinContent(i)
+    if content <= 0:
+      continue
+    center = hist.GetXaxis().GetBinCenter(i)
+    total += content
+    weighted += content * center
+  if total <= 0:
+    return 0.0, 0.0
+  return total, weighted / total
+
+
+def _kde_hist_on_data_axis(
   data: ROOT.TH1,
-  model_hist: ROOT.TH1,
+  marginal_at,
+  name: str,
+) -> ROOT.TH1:
+  """Evaluate the KDE marginal at each data bin center."""
+  out = data.Clone(name)
+  out.SetDirectory(0)
+  out.Reset()
+  out.SetStats(0)
+  if out.GetSumw2N():
+    for i in range(1, out.GetNbinsX() + 1):
+      out.SetBinError(i, 0.0)
+  for i in range(1, data.GetNbinsX() + 1):
+    coord = data.GetXaxis().GetBinCenter(i)
+    out.SetBinContent(i, marginal_at(coord))
+  return out
+
+
+def _make_ratio_hist(data: ROOT.TH1, model: ROOT.TH1, name: str) -> ROOT.TH1:
+  ratio = data.Clone(name)
+  ratio.SetDirectory(0)
+  if ratio.GetSumw2N() == 0:
+    ratio.Sumw2()
+  ratio.Divide(model)
+  ratio.SetTitle("")
+  ratio.SetStats(0)
+  ratio.SetMarkerSize(data.GetMarkerSize())
+  ratio.SetMarkerStyle(data.GetMarkerStyle())
+  ratio.SetMarkerColor(data.GetMarkerColor())
+  ratio.SetLineColor(data.GetLineColor())
+  ratio.SetLineWidth(data.GetLineWidth())
+  ratio.GetYaxis().SetTitle("Data / KDE")
+  ratio.GetYaxis().SetNdivisions(505)
+  ratio.GetXaxis().SetTitle(data.GetXaxis().GetTitle())
+  return ratio
+
+
+def _compute_chi2(data: ROOT.TH1, model: ROOT.TH1) -> tuple[float, int]:
+  chi2 = 0.0
+  ndf = 0
+  for i in range(1, data.GetNbinsX() + 1):
+    err = data.GetBinError(i)
+    if err <= 0:
+      continue
+    diff = data.GetBinContent(i) - model.GetBinContent(i)
+    chi2 += (diff * diff) / (err * err)
+    ndf += 1
+  return chi2, ndf
+
+
+def _make_chi2_contrib_hist(
+  data: ROOT.TH1,
+  model: ROOT.TH1,
+  name: str,
+) -> ROOT.TH1:
+  contrib = data.Clone(name)
+  contrib.SetDirectory(0)
+  contrib.Reset()
+  contrib.SetTitle("")
+  contrib.SetStats(0)
+  contrib.SetMarkerSize(0.0)
+  contrib.SetLineColor(ROOT.kRed + 1)
+  contrib.SetFillColor(ROOT.kRed + 1)
+  contrib.SetFillStyle(1001)
+  contrib.GetYaxis().SetTitle("#chi^{2} contrib")
+  contrib.GetXaxis().SetTitle(data.GetXaxis().GetTitle())
+
+  for i in range(1, data.GetNbinsX() + 1):
+    err = data.GetBinError(i)
+    if err <= 0:
+      continue
+    diff = data.GetBinContent(i) - model.GetBinContent(i)
+    contrib.SetBinContent(i, (diff * diff) / (err * err))
+  return contrib
+
+
+def _projection_stats(
+  data: ROOT.TH1,
+  model: ROOT.TH1,
+  mean_label: str,
+) -> Th1ProjectionStats:
+  chi2, ndf = _compute_chi2(data, model)
+  int_data, mean_data = _hist_1d_stats(data)
+  int_kde, mean_kde = _hist_1d_stats(model)
+  return Th1ProjectionStats(
+    integral_data=int_data,
+    integral_kde=int_kde,
+    mean_data=mean_data,
+    mean_kde=mean_kde,
+    chi2=chi2,
+    ndf=ndf,
+    mean_label=mean_label,
+  )
+
+
+def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.08) -> None:
+  ymax = 1.0
+  ymin = 1.0
+  for i in range(1, ratio.GetNbinsX() + 1):
+    val = ratio.GetBinContent(i)
+    err = ratio.GetBinError(i)
+    if err <= 0 and val == 0:
+      continue
+    ymax = max(ymax, val + err)
+    ymin = min(ymin, val - err)
+  span = max(ymax - ymin, 0.2)
+  margin = pad_frac * span
+  ratio.GetYaxis().SetRangeUser(ymin - margin, ymax + margin)
+
+
+def _chi2_y_range(chi2_hist: ROOT.TH1, pad_frac: float = 0.12) -> None:
+  ymax = chi2_hist.GetMaximum()
+  if ymax <= 0:
+    ymax = 1.0
+  chi2_hist.GetYaxis().SetRangeUser(0.0, ymax * (1.0 + pad_frac))
+
+
+def _draw_unity_line(hist: ROOT.TH1) -> ROOT.TLine:
+  line = ROOT.TLine(
+    hist.GetXaxis().GetXmin(),
+    1.0,
+    hist.GetXaxis().GetXmax(),
+    1.0,
+  )
+  line.SetLineStyle(2)
+  line.SetLineColor(ROOT.kBlack)
+  line.Draw()
+  hist._unity_line = line
+  return line
+
+
+def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> None:
+  pad.cd()
+  box = ROOT.TPaveText(0.30, 0.20, 0.70, 0.52, "NDC")
+  box.SetName("proj_stats_box")
+  box.SetFillColor(ROOT.kWhite)
+  box.SetFillStyle(1001)
+  box.SetBorderSize(1)
+  box.SetTextFont(42)
+  box.SetTextSize(0.034)
+  box.SetTextAlign(12)
+  box.AddText("Statistics")
+  box.AddText(
+    f"integral:  {stats.integral_data:.4g}  /  {stats.integral_kde:.4g}"
+  )
+  box.AddText(
+    f"{stats.mean_label}:  {stats.mean_data:.4g}  /  {stats.mean_kde:.4g}"
+  )
+  #box.AddText(
+    #f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf},  "
+    #f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}"
+  #)
+  box.Draw()
+  pad._stats_box = box
+
+
+def _draw_projection_column(
+  parent_pad: ROOT.TPad,
+  data: ROOT.TH1,
+  model_curve: ROOT.TGraph,
+  model_bins: ROOT.TH1,
   title: str,
+  stats: Th1ProjectionStats,
+  name_prefix: str,
 ) -> None:
+  ratio = _make_ratio_hist(data, model_bins, f"{name_prefix}_ratio")
+  chi2_hist = _make_chi2_contrib_hist(data, model_bins, f"{name_prefix}_chi2")
+
+  parent_pad.cd()
+  parent_pad.SetFillStyle(0)
+
+  pad_chi2 = ROOT.TPad(f"{name_prefix}_chi2_pad", "", 0.0, 0.0, 1.0, 0.17)
+  pad_chi2.SetTopMargin(0.04)
+  pad_chi2.SetBottomMargin(0.32)
+  pad_chi2.SetLeftMargin(0.12)
+  pad_chi2.SetRightMargin(0.04)
+  pad_chi2.SetGridy()
+
+  pad_ratio = ROOT.TPad(f"{name_prefix}_ratio_pad", "", 0.0, 0.17, 1.0, 0.34)
+  pad_ratio.SetTopMargin(0.02)
+  pad_ratio.SetBottomMargin(0.32)
+  pad_ratio.SetLeftMargin(0.12)
+  pad_ratio.SetRightMargin(0.04)
+  pad_ratio.SetGridy()
+
+  pad_main = ROOT.TPad(f"{name_prefix}_main", "", 0.0, 0.34, 1.0, 1.0)
+  pad_main.SetBottomMargin(0.12)
+  pad_main.SetTopMargin(0.06)
+  pad_main.SetLeftMargin(0.12)
+  pad_main.SetRightMargin(0.04)
+  pad_main.SetGridy()
+
+  pad_chi2.Draw()
+  pad_ratio.Draw()
+  pad_main.Draw()
+
+  pad_main.cd()
   data.SetStats(0)
   data.SetTitle(title)
   data.SetMarkerSize(0.8)
   data.SetMarkerColor(ROOT.kBlack)
   data.SetLineColor(ROOT.kBlack)
   data.SetLineWidth(1)
-  model_hist.SetStats(0)
-  _style_projection_hist(model_hist)
+  _style_projection_curve(model_curve)
+  data.GetXaxis().SetLabelSize(0.045)
+  data.GetXaxis().SetTitleSize(0.045)
+  data.GetXaxis().SetTitleOffset(1.0)
+  data.GetXaxis().SetNdivisions(505)
 
-  ymax = max(data.GetMaximum(), model_hist.GetMaximum())
+  ymax = max(data.GetMaximum(), _graph_max_y(model_curve))
   ymin = min(0.0, data.GetMinimum())
   span = max(ymax - ymin, 1.0)
   data.GetYaxis().SetRangeUser(ymin - 0.05 * span, ymax + 0.15 * span)
+  data.GetYaxis().SetLabelSize(0.045)
+  data.GetYaxis().SetTitleSize(0.045)
+  data.GetYaxis().SetTitleOffset(1.2)
   data.Draw("E1 HIST")
-  model_hist.Draw("L SAME")
+  model_curve.Draw("L SAME")
 
-  leg = ROOT.TLegend(0.62, 0.78, 0.88, 0.90)
+  leg = ROOT.TLegend(0.82, 0.72, 0.98, 0.88)
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
-  leg.SetTextSize(0.03)
+  leg.SetTextSize(0.035)
   leg.AddEntry(data, "Data", "lep")
-  leg.AddEntry(model_hist, "#alpha#timesKDE", "l")
+  leg.AddEntry(model_curve, "#alpha#timesKDE", "l")
   leg.Draw()
+  pad_main._legend = leg
+
+  pad_ratio.cd()
+  ratio.GetXaxis().SetLabelSize(0.0)
+  ratio.GetXaxis().SetTitleSize(0.0)
+  ratio.GetYaxis().SetLabelSize(0.11)
+  ratio.GetYaxis().SetTitleSize(0.11)
+  ratio.GetYaxis().SetTitleOffset(0.42)
+  _ratio_y_range(ratio)
+  ratio.Draw("E1 HIST")
+  pad_ratio._unity_line = _draw_unity_line(ratio)
+
+  pad_chi2.cd()
+  chi2_hist.GetXaxis().SetLabelSize(0.0)
+  chi2_hist.GetXaxis().SetTitleSize(0.0)
+  chi2_hist.GetYaxis().SetLabelSize(0.11)
+  chi2_hist.GetYaxis().SetTitleSize(0.11)
+  chi2_hist.GetYaxis().SetTitleOffset(0.48)
+  _chi2_y_range(chi2_hist)
+  chi2_hist.Draw("HIST")
+
+  _draw_projection_stats_box(pad_main, stats)
+
+  parent_pad._projection_pads = (pad_main, pad_ratio, pad_chi2)
+  parent_pad._projection_ratio = ratio
+  parent_pad._projection_chi2 = chi2_hist
+  parent_pad._projection_model_bins = model_bins
 
 
 def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
@@ -760,10 +1037,27 @@ def plot_projections(
     target.Sumw2()
 
   proj_opt = "e"
-  hx_data = target.ProjectionX(f"{target.GetName()}_px_data", 0, -1, proj_opt)
-  hy_data = target.ProjectionY(f"{target.GetName()}_py_data", 0, -1, proj_opt)
-  hx_kde = kde_projection_x(kde_model, target, f"{target.GetName()}_px_kde")
-  hy_kde = kde_projection_y(kde_model, target, f"{target.GetName()}_py_kde")
+  # Sum only in-range bins; (0, -1) includes underflow/overflow on the summed axis.
+  hx_data = target.ProjectionX(
+    f"{target.GetName()}_px_data", 1, target.GetNbinsY(), proj_opt
+  )
+  hy_data = target.ProjectionY(
+    f"{target.GetName()}_py_data", 1, target.GetNbinsX(), proj_opt
+  )
+  gx_kde = kde_projection_x_curve(kde_model, target, f"{target.GetName()}_px_kde")
+  gy_kde = kde_projection_y_curve(kde_model, target, f"{target.GetName()}_py_kde")
+  hx_kde_bins = _kde_hist_on_data_axis(
+    hx_data,
+    lambda x: _kde_marginal_over_y(kde_model, target, x),
+    f"{target.GetName()}_px_kde_bins",
+  )
+  hy_kde_bins = _kde_hist_on_data_axis(
+    hy_data,
+    lambda y: _kde_marginal_over_x(kde_model, target, y),
+    f"{target.GetName()}_py_kde_bins",
+  )
+  x_stats = _projection_stats(hx_data, hx_kde_bins, "mean x")
+  y_stats = _projection_stats(hy_data, hy_kde_bins, "mean y")
 
   # #region agent log
   x_probe = 0.0
@@ -776,21 +1070,19 @@ def plot_projections(
     {
       "x_probe": x_probe,
       "data_px": hx_data.GetBinContent(x_bin),
-      "kde_px": hx_kde.GetBinContent(hx_kde.GetXaxis().FindBin(x_probe)),
+      "kde_px": _graph_y_at_x(gx_kde, x_probe),
       "data_py": hy_data.GetBinContent(y_bin),
-      "kde_py": hy_kde.GetBinContent(hy_kde.GetXaxis().FindBin(x_probe)),
+      "kde_py": _graph_y_at_x(gy_kde, x_probe),
       "sum_data_px": hx_data.Integral(),
-      "sum_kde_px": hx_kde.Integral(),
       "sum_data_py": hy_data.Integral(),
-      "sum_kde_py": hy_kde.Integral(),
-      "n_integrate": KDE_PLOT_BINS,
-      "y_scale": target.GetNbinsY() / KDE_PLOT_BINS,
-      "x_scale": target.GetNbinsX() / KDE_PLOT_BINS,
+      "n_curve_points": KDE_PROJECTION_POINTS,
+      "ref_bins_x": target.GetNbinsX(),
+      "ref_bins_y": target.GetNbinsY(),
     },
   )
   # #endregion
 
-  for h in (hx_data, hy_data, hx_kde, hy_kde):
+  for h in (hx_data, hy_data):
     h.SetDirectory(0)
   if hx_data.GetSumw2N() == 0:
     hx_data.Sumw2()
@@ -810,17 +1102,38 @@ def plot_projections(
 
   canvas.cd(1)
   pad_x = canvas.GetPad(1)
-  pad_x.SetGridy()
-  pad_x.SetLeftMargin(0.12)
-  pad_x.SetBottomMargin(0.12)
-  _draw_projection_panel(hx_data, hx_kde, "2D KDE X projection")
+  pad_x.cd()
+  _draw_projection_column(
+    pad_x,
+    hx_data,
+    gx_kde,
+    hx_kde_bins,
+    "2D KDE X projection",
+    x_stats,
+    f"{target.GetName()}_px",
+  )
 
   canvas.cd(2)
   pad_y = canvas.GetPad(2)
-  pad_y.SetGridy()
-  pad_y.SetLeftMargin(0.12)
-  pad_y.SetBottomMargin(0.12)
-  _draw_projection_panel(hy_data, hy_kde, "2D KDE Y projection")
+  pad_y.cd()
+  _draw_projection_column(
+    pad_y,
+    hy_data,
+    gy_kde,
+    hy_kde_bins,
+    "2D KDE Y projection",
+    y_stats,
+    f"{target.GetName()}_py",
+  )
+
+  canvas._projection_data = (
+    hx_data,
+    hy_data,
+    gx_kde,
+    gy_kde,
+    hx_kde_bins,
+    hy_kde_bins,
+  )
 
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -831,7 +1144,6 @@ def main() -> int:
   show = "--show" in sys.argv
   target, _template, meta, hist_stats, kde_stats = load_fit_objects(FIT_ROOT_FILE)
   rho = float(meta["rho"])
-  print_ndkeys_bandwidths(target, rho)
   kde_model = build_kde_model(target, meta)
   kde_fine = kde_plot_hist(kde_model, "kde_fine_plot")
   kde_on_data = evaluate_kde_on_hist_grid(kde_model, target, "kde_on_data_plot")
