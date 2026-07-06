@@ -1,5 +1,9 @@
 """
-Remove bins that contain suspected non-physical beam behavior. All bins with y coord >= 80cm
+Resize TH2 histograms by trimming bins outside requested axis bounds.
+
+By default, nominal beam-position histograms are trimmed at y >= 80 cm to remove
+suspected non-physical beam behavior. Bounds for both x and y axes can be set
+independently via resize_th2().
 """
 import os
 import sys
@@ -21,14 +25,19 @@ INPUT_ROOT_FILE3 = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2.root"
 )
 
-OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "nominal_corrected.root"
+OUTPUT_ROOT_FILE1 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "nominal_75x75.root"
+)
+OUTPUT_ROOT_FILE2 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1_75x75.root"
+)
+OUTPUT_ROOT_FILE3 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2_75x75.root"
 )
 
 
-def corrected_output_path(input_path: str) -> str:
-  root, ext = os.path.splitext(input_path)
-  return f"{root}_corrected{ext}"
+
+
 
 
 def load_th2_group(
@@ -52,38 +61,99 @@ def load_th2_group(
   return hists
 
 
-def trim_hist_y_max(hist: ROOT.TH2, y_max_cm: float = Y_MAX_CM) -> ROOT.TH2:
-  max_iy = 0
-  for iy in range(1, hist.GetNbinsY() + 1):
-    if hist.GetYaxis().GetBinCenter(iy) <= y_max_cm:
-      max_iy = iy
+def _axis_bin_range(
+  axis: ROOT.TAxis,
+  low: float | None,
+  high: float | None,
+  axis_name: str,
+  hist_name: str,
+) -> tuple[int, int]:
+  if low is None:
+    low = axis.GetXmin()
+  if high is None:
+    high = axis.GetXmax()
+  if low > high:
+    raise ValueError(
+      f"{axis_name} lower bound {low} exceeds upper bound {high} in {hist_name!r}"
+    )
 
-  if max_iy == 0:
-    raise ValueError(f"no y bins with center <= {y_max_cm} cm in {hist.GetName()!r}")
+  min_i: int | None = None
+  max_i = 0
+  for i in range(1, axis.GetNbins() + 1):
+    center = axis.GetBinCenter(i)
+    if center >= low and min_i is None:
+      min_i = i
+    if center <= high:
+      max_i = i
 
-  out = hist.Clone(hist.GetName())
+  if min_i is None or max_i == 0 or min_i > max_i:
+    raise ValueError(
+      f"no {axis_name} bins with centers in [{low}, {high}] in {hist_name!r}"
+    )
+  return min_i, max_i
+
+
+def resize_th2(
+  hist: ROOT.TH2,
+  x_min: float | None = None,
+  x_max: float | None = None,
+  y_min: float | None = None,
+  y_max: float | None = None,
+) -> ROOT.TH2:
+  """Return a copy of hist trimmed to the requested axis bounds."""
+  hist_name = hist.GetName()
+  xaxis = hist.GetXaxis()
+  yaxis = hist.GetYaxis()
+
+  min_ix, max_ix = _axis_bin_range(xaxis, x_min, x_max, "x", hist_name)
+  min_iy, max_iy = _axis_bin_range(yaxis, y_min, y_max, "y", hist_name)
+
+  out = hist.Clone(hist_name)
   out.SetDirectory(0)
   out.SetBins(
-    hist.GetNbinsX(),
-    hist.GetXaxis().GetXmin(),
-    hist.GetXaxis().GetXmax(),
-    max_iy,
-    hist.GetYaxis().GetXmin(),
-    hist.GetYaxis().GetBinUpEdge(max_iy),
+    max_ix - min_ix + 1,
+    xaxis.GetBinLowEdge(min_ix),
+    xaxis.GetBinUpEdge(max_ix),
+    max_iy - min_iy + 1,
+    yaxis.GetBinLowEdge(min_iy),
+    yaxis.GetBinUpEdge(max_iy),
   )
+
+  for ix in range(min_ix, max_ix + 1):
+    for iy in range(min_iy, max_iy + 1):
+      dest_ix = ix - min_ix + 1
+      dest_iy = iy - min_iy + 1
+      out.SetBinContent(dest_ix, dest_iy, hist.GetBinContent(ix, iy))
+      out.SetBinError(dest_ix, dest_iy, hist.GetBinError(ix, iy))
+
   return out
 
 
-def write_trimmed_hists(hists: list[ROOT.TH2], output_path: str) -> None:
+def trim_hist_y_max(hist: ROOT.TH2, y_max_cm: float = Y_MAX_CM) -> ROOT.TH2:
+  return resize_th2(hist, y_max=y_max_cm)
+
+
+def write_resized_hists(
+  hists: list[ROOT.TH2],
+  output_path: str,
+  x_min: float | None = None,
+  x_max: float | None = None,
+  y_min: float | None = None,
+  y_max: float | None = None,
+) -> None:
   outfile = ROOT.TFile.Open(output_path, "RECREATE")
   if not outfile or outfile.IsZombie():
     raise OSError(f"cannot create {output_path}")
 
   for hist in hists:
-    trim_hist_y_max(hist).Write()
+    resize_th2(hist, x_min=-75, x_max=75, y_min=-75, y_max=75).Write()
 
   outfile.Close()
   print(f"Wrote {len(hists)} histograms to {output_path}")
+
+
+def write_trimmed_hists(hists: list[ROOT.TH2], output_path: str) -> None:
+  write_resized_hists(hists, output_path, y_max=Y_MAX_CM)
 
 
 def main() -> int:
@@ -100,9 +170,9 @@ def main() -> int:
     ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
   )
 
-  write_trimmed_hists(nominal_hists, OUTPUT_ROOT_FILE)
-  write_trimmed_hists(run1_hists, corrected_output_path(INPUT_ROOT_FILE2))
-  write_trimmed_hists(run2_hists, corrected_output_path(INPUT_ROOT_FILE3))
+  write_trimmed_hists(nominal_hists, OUTPUT_ROOT_FILE1)
+  write_trimmed_hists(run1_hists, OUTPUT_ROOT_FILE2)
+  write_trimmed_hists(run2_hists, OUTPUT_ROOT_FILE3)
   return 0
 
 

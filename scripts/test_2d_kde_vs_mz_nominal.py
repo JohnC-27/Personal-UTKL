@@ -23,11 +23,11 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # Rebinned grid size (must evenly divide SOURCE_BINS_X / SOURCE_BINS_Y).
-N_OUTPUT_BINS_X = 100
-N_OUTPUT_BINS_Y = 90
+N_OUTPUT_BINS_X = 75
+N_OUTPUT_BINS_Y = 75
 
-SOURCE_BINS_X = 2000
-SOURCE_BINS_Y = 1800
+SOURCE_BINS_X = 1500
+SOURCE_BINS_Y = 1500
 HIST_NAME = "NominalxyposMM1"
 NOMINAL_HIST_NAME = "nominalxyposMM1"
 
@@ -38,10 +38,10 @@ NOMINAL_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", "nominal_corrected.root"
 )
 RUN1_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run1_corrected.root"
+  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run1_75x75.root"
 )
 RUN2_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run2_corrected.root"
+  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run2_75x75.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
@@ -238,6 +238,34 @@ def optimal_alpha(kde_shape: ROOT.TH2, hist: ROOT.TH2) -> float:
   if den <= 0:
     return 1.0
   return num / den
+
+
+def make_chi2_contrib_th2(
+  data: ROOT.TH2,
+  template: ROOT.TH2,
+  name: str,
+) -> ROOT.TH2D:
+  """Per-bin #chi^{2} term: (data - model)^{2} / err^{2}; zero-error bins left empty."""
+  contrib = data.Clone(name)
+  contrib.SetDirectory(0)
+  contrib.Reset()
+  contrib.SetStats(0)
+  xtitle = data.GetXaxis().GetTitle() or "x [cm]"
+  ytitle = data.GetYaxis().GetTitle() or "y [cm]"
+  contrib.SetTitle(
+    f"#chi^{{2}} contribution per bin;{xtitle};{ytitle};#chi^{{2}}_{{i}}"
+  )
+
+  for ix in range(1, data.GetNbinsX() + 1):
+    for iy in range(1, data.GetNbinsY() + 1):
+      err = data.GetBinError(ix, iy)
+      if err <= 0:
+        continue
+      observed = data.GetBinContent(ix, iy)
+      expected = template.GetBinContent(ix, iy)
+      diff = observed - expected
+      contrib.SetBinContent(ix, iy, (diff * diff) / (err * err))
+  return contrib
 
 
 def chi_squared_vs_hist(
@@ -610,18 +638,18 @@ def _draw_ratio_on_pad(
   ratio.GetYaxis().SetTitle(ytitle)
 
   _set_diverging_ratio_palette()
-  ratio.Draw("COLZ")
+  ratio.Draw("LEGO")
 
   latex = ROOT.TLatex()
   latex.SetNDC(True)
   latex.SetTextFont(42)
   latex.SetTextSize(0.03)
   latex.SetTextAlign(22)
-  latex.DrawLatex(
-    0.50,
-    0.92,
-    "blue: KDE < data   white: KDE = data   red: KDE > data",
-  )
+  #latex.DrawLatex(
+   # 0.50,
+   #0.92,
+   # "blue: KDE < data   white: KDE = data   red: KDE > data",
+  #)
 
   return [ratio, latex]
 
@@ -648,14 +676,14 @@ def _draw_fit_params(
   lines = [
     f"{run_label} ({n_output_bins_x}#times{n_output_bins_y} bins)",
   ]
-  if linear_combo:
-    lines.append(f"#rho={rho:.5g}, mix={mix:.5g}, #alpha={alpha:.5g}")
-  else:
-    lines.append(f"#rho={rho:.5g}, #alpha={alpha:.5g}")
+  #if linear_combo:
+    #lines.append(f"#rho={rho:.5g}, mix={mix:.5g}, #alpha={alpha:.5g}")
+  #else:
+    #lines.append(f"#rho={rho:.5g}, #alpha={alpha:.5g}")
   lines.append(f"#chi^{{2}}={chi2:.2f}, #chi^{{2}}/ndf={reduced:.3f}")
-  y = 0.97
+  y = 0.90
   for line in lines:
-    latex.DrawLatex(0.02, y, line)
+    latex.DrawLatex(0.65, y, line)
     y -= 0.035
   return latex
 
@@ -736,6 +764,81 @@ def output_png_path(
     f"2d_kde_vs_mz_nominal_{run_label}_"
     f"{n_output_bins_x}x{n_output_bins_y}bin.pdf",
   )
+
+
+def chi2_contrib_output_path(
+  run_label: str,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
+) -> str:
+  return os.path.join(
+    OUTPUT_DIR,
+    f"2d_kde_chi2_contrib_vs_mz_nominal_{run_label}_"
+    f"{n_output_bins_x}x{n_output_bins_y}bin.pdf",
+  )
+
+
+def plot_chi2_contrib_lego(
+  data: ROOT.TH2,
+  fit: dict,
+  run_label: str,
+  n_output_bins_x: int,
+  n_output_bins_y: int,
+  outfile: str,
+) -> None:
+  template = fit["template"]
+  contrib = make_chi2_contrib_th2(
+    data,
+    template,
+    f"chi2_contrib_{run_label}",
+  )
+
+  zmax = contrib.GetMaximum()
+  if zmax <= 0:
+    zmax = 1.0
+  contrib.GetZaxis().SetRangeUser(0.0, zmax * 1.05)
+  contrib.GetZaxis().SetTitle("#chi^{2}_{i}")
+  contrib.GetXaxis().SetTitle(data.GetXaxis().GetTitle() or "x [cm]")
+  contrib.GetXaxis().SetTitleOffset(2)
+  contrib.GetYaxis().SetTitle(data.GetYaxis().GetTitle() or "y [cm]")
+
+  canvas = ROOT.TCanvas(
+    f"c_chi2_contrib_{run_label}",
+    f"#chi^{{2}} contributions {run_label}",
+    1200,
+    900,
+  )
+  canvas.SetRightMargin(0.14)
+  canvas.SetLeftMargin(0.12)
+  canvas.SetBottomMargin(0.12)
+  canvas.SetTopMargin(0.10)
+  canvas.SetTheta(28)
+  canvas.SetPhi(60)
+
+  contrib.Draw("LEGO")
+
+  latex = ROOT.TLatex()
+  latex.SetNDC(True)
+  latex.SetTextFont(42)
+  latex.SetTextSize(0.035)
+  latex.SetTextAlign(12)
+  chi2 = fit["chi2"]
+  reduced = fit["reduced_chi2"]
+  latex.DrawLatex(
+    0.08,
+    0.92,
+    f"{run_label} ({n_output_bins_x}#times{n_output_bins_y} bins)",
+  )
+  latex.DrawLatex(
+    0.08,
+    0.87,
+    f"#chi^{{2}}={chi2:.2f}, #chi^{{2}}/ndf={reduced:.3f}",
+  )
+
+  canvas._keepalive = [contrib, latex]
+  canvas.Update()
+  canvas.SaveAs(outfile)
+  print(f"Saved {outfile}")
 
 
 def main() -> int:
@@ -834,6 +937,14 @@ def main() -> int:
       N_OUTPUT_BINS_X,
       N_OUTPUT_BINS_Y,
       output_png_path(run_label, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y),
+    )
+    plot_chi2_contrib_lego(
+      run_data,
+      run_fit,
+      run_label,
+      N_OUTPUT_BINS_X,
+      N_OUTPUT_BINS_Y,
+      chi2_contrib_output_path(run_label, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y),
     )
   return 0
 

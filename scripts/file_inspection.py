@@ -5,7 +5,7 @@ import ROOT
 
 INPUT_ROOT_FILE = os.path.abspath(
   os.path.join(
-    os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run2.root"
+    os.path.dirname(__file__), "..", "root_files", "nominal_75x75.root"
   )
 )
 

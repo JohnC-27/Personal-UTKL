@@ -1,1 +1,2 @@
-LineWidth
+
+    y -= 0.035

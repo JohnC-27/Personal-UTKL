@@ -890,7 +890,7 @@ def _draw_unity_line(hist: ROOT.TH1) -> ROOT.TLine:
 
 def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> None:
   pad.cd()
-  box = ROOT.TPaveText(0.30, 0.20, 0.70, 0.52, "NDC")
+  box = ROOT.TPaveText(0.30, 0.16, 0.70, 0.55, "NDC")
   box.SetName("proj_stats_box")
   box.SetFillColor(ROOT.kWhite)
   box.SetFillStyle(1001)
@@ -905,10 +905,8 @@ def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> Non
   box.AddText(
     f"{stats.mean_label}:  {stats.mean_data:.4g}  /  {stats.mean_kde:.4g}"
   )
-  #box.AddText(
-    #f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf},  "
-    #f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}"
-  #)
+  box.AddText(f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}")
+  box.AddText(f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}")
   box.Draw()
   pad._stats_box = box
 
