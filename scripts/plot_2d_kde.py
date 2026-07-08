@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot 2D KDE fit results from 2d_kde.root."""
+"""Plot 2D KDE fit results"""
 
 import array
 import json
@@ -14,12 +14,12 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 FIT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "2d_kde.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "Jan2026_2d_kde.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, "2d_kde_overlay.pdf")
-OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, "2d_kde_projections.pdf")
-OUTPUT_RATIO = os.path.join(OUTPUT_DIR, "2d_kde_ratio.pdf")
+OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, "jan2026_2d_kde_overlay.pdf")
+OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, "jan2026_2d_kde_projections.pdf")
+OUTPUT_RATIO = os.path.join(OUTPUT_DIR, "jan2026_2d_kde_ratio.pdf")
 
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
@@ -353,7 +353,10 @@ def _axis_linspace(lo: float, hi: float, n_points: int) -> list[float]:
   if n_points <= 1:
     return [(lo + hi) / 2.0]
   step = (hi - lo) / (n_points - 1)
-  return [lo + i * step for i in range(n_points)]
+  pts = [min(max(lo + i * step, lo), hi) for i in range(n_points)]
+  pts[0] = lo
+  pts[-1] = hi
+  return pts
 
 
 def _kde_marginal_over_y(model: KdeModel, ref_hist: ROOT.TH2, x: float) -> float:

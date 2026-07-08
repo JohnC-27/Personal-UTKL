@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Rebin the high-resolution TH2D histograms in mz_nominal_2000bin_run*.root and
-write lower-resolution copies to mz_nominal_[N]bin_run[1|2].root.
+Rebin the high-resolution TH2s histograms and
+write lower-resolution copies.
 """
 
 import math
@@ -16,7 +16,8 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # Target number of bins per axis after combining the 2000-bin histograms.
 N_OUTPUT_BINS = 100
 
-SOURCE_BINS = 2000
+# Assumes square TH2
+SOURCE_BINS = 200
 ROOT_FILES_DIR = os.path.join(os.path.dirname(__file__), "..", "root_files")
 
 SOURCE_FILES = {

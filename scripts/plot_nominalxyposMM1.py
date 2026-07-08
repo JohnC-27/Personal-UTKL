@@ -12,20 +12,20 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1_corrected.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "Jan2026studies_nominal.root"
 )
 
 
 
-HIST_NAME = "NominalxyposMM1"
+HIST_NAME = "nominal_xypos_1"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_2D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_colz.pdf")
-OUTPUT_3D = os.path.join(OUTPUT_DIR, "nominalxyposMM1_surf3d.pdf")
-OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "nominalxyposMM1_x_y_proj.pdf")
+OUTPUT_2D = os.path.join(OUTPUT_DIR, "Jan2026_MM1_colz.pdf")
+OUTPUT_3D = os.path.join(OUTPUT_DIR, "Jan2026_MM1_surf3d.pdf")
+OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "Jan2026_MM1_xyproj.pdf")
 
 REBIN = True
-N_OUTPUT_BINS_X = 100
-N_OUTPUT_BINS_Y = 90
+N_OUTPUT_BINS_X = 200
+N_OUTPUT_BINS_Y = 200
 
 def load_histogram(filepath: str, hist_name: str) -> ROOT.TH2:
   tfile = ROOT.TFile.Open(filepath, "READ")
@@ -95,7 +95,7 @@ def plot_colz(hist: ROOT.TH2, outfile: str) -> None:
   canvas.SetLeftMargin(0.12)
   canvas.SetBottomMargin(0.12)
 
-  hist.Draw("LEGO")
+  hist.Draw("COLZ")
   canvas.Update()
   canvas.SaveAs(outfile)
   print(f"Saved {outfile}")

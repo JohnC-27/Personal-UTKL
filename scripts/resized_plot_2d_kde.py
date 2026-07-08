@@ -23,7 +23,7 @@ RESIZED_HIST_NAME = "nominalxyposMM1"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
 OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, "2d_kde_overlay_nominalxyposMM1.pdf")
 OUTPUT_PROJECTIONS = os.path.join(
-  OUTPUT_DIR, "2d_kde_projections_nominalxyposMM1.pdf"
+  OUTPUT_DIR, "2d_kde_projections_MM1.pdf"
 )
 OUTPUT_RATIO = os.path.join(OUTPUT_DIR, "2d_kde_ratio_nominalxyposMM1.pdf")
 
@@ -575,10 +575,10 @@ def _set_diverging_ratio_palette() -> None:
   ROOT.gStyle.SetNumberContours(255)
 
 
-def kde_over_data_ratio(kde: ROOT.TH2, data: ROOT.TH2, name: str) -> ROOT.TH2D:
-  ratio = kde.Clone(name)
+def data_over_kde_ratio(kde: ROOT.TH2, data: ROOT.TH2, name: str) -> ROOT.TH2D:
+  ratio = data.Clone(name)
   ratio.SetDirectory(0)
-  ratio.Divide(data)
+  ratio.Divide(kde)
   ratio.SetStats(0)
   return ratio
 
@@ -607,14 +607,14 @@ def plot_ratio(
   template: ROOT.TH2,
   outfile: str,
 ) -> None:
-  ratio = kde_over_data_ratio(template, target, "kde_over_data_ratio")
+  ratio = data_over_kde_ratio(template, target, "data_over_kde_ratio")
   zmin, zmax = _ratio_color_range(ratio, target)
 
   xtitle = target.GetXaxis().GetTitle() or "x [cm]"
   ytitle = target.GetYaxis().GetTitle() or "y [cm]"
-  ratio.SetTitle("KDE / Data;{};{};KDE / Data".format(xtitle, ytitle))
+  ratio.SetTitle("Data / KDE;{};{};Data / KDE".format(xtitle, ytitle))
   ratio.GetZaxis().SetRangeUser(zmin, zmax)
-  ratio.GetZaxis().SetTitle("KDE / Data")
+  ratio.GetZaxis().SetTitle("Data / KDE")
   ratio.GetZaxis().SetTitleOffset(1.5)
   ratio.GetZaxis().SetLabelSize(0.03)
 
@@ -629,7 +629,7 @@ def plot_ratio(
 
   _set_diverging_ratio_palette()
 
-  canvas = ROOT.TCanvas("c_ratio", "KDE / Data ratio", 900, 820)
+  canvas = ROOT.TCanvas("c_ratio", "Data / KDE ratio", 900, 820)
   canvas.SetRightMargin(0.14)
   canvas.SetLeftMargin(0.12)
   canvas.SetBottomMargin(0.12)

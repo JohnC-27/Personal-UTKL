@@ -19,12 +19,12 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 ROOT.gROOT.SetBatch(True)
 
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "nominal_corrected.root"
-)
-TARGET_HIST_NAME = "nominalxyposMM1"
+  os.path.dirname(__file__), "..", "root_files", "jan2026studies_nominal.root"
+) # "nominal_corrected.root" or 
+TARGET_HIST_NAME = "nominal_xypos_1" # "nominalxyposMM1" or "nominal_xypos_1"
 
 OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", "jan2026_2d_kde.root"
 )
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible

@@ -448,8 +448,8 @@ def _draw_surf3d_axis_titles(xtitle: str, ytitle: str, ztitle: str) -> None:
   latex.SetTextFont(42)
   latex.SetTextSize(0.032)
   latex.SetTextAlign(22)
-  latex.DrawLatex(0.74, 0.05, xtitle)
-  latex.DrawLatex(0.26, 0.05, ytitle)
+  latex.DrawLatex(0.8, 0.1, xtitle)
+  latex.DrawLatex(0.34, 0.05, ytitle)
   latex.SetTextAngle(90)
   latex.DrawLatex(0.97, 0.54, ztitle)
 
@@ -507,10 +507,10 @@ def _set_diverging_ratio_palette() -> None:
   ROOT.gStyle.SetNumberContours(255)
 
 
-def kde_over_data_ratio(kde: ROOT.TH2, data: ROOT.TH2, name: str) -> ROOT.TH2D:
-  ratio = kde.Clone(name)
+def data_over_kde_ratio(kde: ROOT.TH2, data: ROOT.TH2, name: str) -> ROOT.TH2D:
+  ratio = data.Clone(name)
   ratio.SetDirectory(0)
-  ratio.Divide(data)
+  ratio.Divide(kde)
   ratio.SetStats(0)
   return ratio
 
@@ -628,12 +628,15 @@ def _draw_ratio_on_pad(
   pad.SetBottomMargin(0.12)
   pad.SetTopMargin(0.08)
 
-  ratio = kde_over_data_ratio(template, data, f"{data.GetName()}_ratio")
+  ratio = data_over_kde_ratio(template, data, f"{data.GetName()}_ratio")
   zmin, zmax = _ratio_color_range(ratio, data)
   xtitle, ytitle, _ztitle = _axis_titles(data)
-  ratio.SetTitle(f"KDE / Data;{xtitle};{ytitle};KDE / Data")
+  ratio.SetTitle(f"Data / KDE;{xtitle};{ytitle};Data / KDE")
   ratio.GetZaxis().SetRangeUser(zmin, zmax)
-  ratio.GetZaxis().SetTitle("KDE / Data")
+  ratio.GetZaxis().SetTitle("Data / KDE")
+  ratio.GetXaxis().SetTitleOffset(1.7)
+  ratio.GetYaxis().SetTitleOffset(2)
+  ratio.GetZaxis().SetTitleOffset(1.7)
   ratio.GetXaxis().SetTitle(xtitle)
   ratio.GetYaxis().SetTitle(ytitle)
 
@@ -754,7 +757,7 @@ def plot_combined_summary(
   print(f"Saved {outfile}")
 
 
-def output_png_path(
+def output_pdf_path(
   run_label: str,
   n_output_bins_x: int,
   n_output_bins_y: int,
@@ -936,7 +939,7 @@ def main() -> int:
       linear_combo,
       N_OUTPUT_BINS_X,
       N_OUTPUT_BINS_Y,
-      output_png_path(run_label, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y),
+      output_pdf_path(run_label, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y),
     )
     plot_chi2_contrib_lego(
       run_data,
