@@ -105,7 +105,7 @@ def parse_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
     except ValueError:
       out[key] = val
   return out
-
+#poop
 
 def parse_stats_meta(meta: ROOT.TNamed) -> tuple[Th2Stats, Th2Stats]:
   raw = parse_meta(meta)
