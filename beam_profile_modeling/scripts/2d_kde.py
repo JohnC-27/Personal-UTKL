@@ -20,8 +20,9 @@ ROOT.gROOT.SetBatch(True)
 
 
 # ===============================SCRIPT PARAMS===============================
+INPUT_FILE_NAME = "" # .root added below
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_100bin_run1.root"
+  os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}.root"
 ) # "nominal_corrected.root" or 
 
 # "nominalxyposMM1" in nominal
@@ -30,7 +31,7 @@ INPUT_ROOT_FILE = os.path.join(
 TARGET_HIST_NAME = "NominalxyposMM1" 
 
 OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "test_2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}_2d_kde.root"
 )
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible

@@ -6,3 +6,4 @@ env/
 __pychache__/
 ai/
 .ai/
+.DS_Store
