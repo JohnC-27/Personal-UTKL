@@ -18,17 +18,24 @@ import ROOT
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 ROOT.gROOT.SetBatch(True)
 
+
+# ===============================SCRIPT PARAMS===============================
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "jan2026studies_nominal.root"
+  os.path.dirname(__file__), "..", "root_files", "mz_nominal_100bin_run1.root"
 ) # "nominal_corrected.root" or 
-TARGET_HIST_NAME = "nominal_xypos_1" # "nominalxyposMM1" or "nominal_xypos_1"
+
+# "nominalxyposMM1" in nominal
+# "nominal_xypos_1" in jan2026 studies
+# NominalxyposMM1" in mz_nominal
+TARGET_HIST_NAME = "NominalxyposMM1" 
 
 OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "jan2026_2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", "test_2d_kde.root"
 )
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible
 # lattice ripples on the 8 cm histogram grid; ~1.4 is much smoother.
+# To not do a scan, min = max
 RHO_SCAN_MIN = 3.5
 RHO_SCAN_MAX = 3.5
 RHO_SCAN_STEP = 0.1
@@ -36,9 +43,11 @@ RHO_SCAN_STEP = 0.1
 USE_LINEAR_COMBO = True
 
 # 2D RooNDKeysPdf(RooArgSet, ...) takes an options string, not the legacy Mirror enum.
+# "a" = adaptive bandwidth
+# "m" = mirror both
 NDKEYS_NO_MIRROR = "a"
 NDKEYS_MIRROR_BOTH = "am"
-
+# ===============================SCRIPT PARAMS===============================
 
 @dataclass
 class RhoScanPoint:

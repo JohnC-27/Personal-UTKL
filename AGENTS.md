@@ -1,10 +1,10 @@
 # AI folder index
 
 ## Project purpose:
-- The purpose of this project is to create scripts and methods to analyze and model 2d histograms.
+- The purpose of this project is to analyze and model 2d histograms.
 
 ## ai/ logs and documentation purpose:
-Working memory for **agents and humans**. Update these files over burying decisions in chat only.
+- Working memory for **agents and humans**. Update these files over burying decisions in chat only.
 
 | File | Purpose | Update when |
 |------|---------|-------------|
@@ -15,4 +15,4 @@ Working memory for **agents and humans**. Update these files over burying decisi
 | [debugging_log.md](debugging_log.md) | Hypothesis-driven debug record | Investigating or resolving a bug |
 
 ## Boot sequence for agents: 
-`instructions.md` → `active_task.md` → `docs/overview.md` + `docs/structure.md` → skim latest entries in the three logs.
+`ai/instructions.md` → `ai/active_task.md` → `docs/overview.md` + `docs/structure.md` → skim latest entries in the three logs.

@@ -13,13 +13,14 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
+FIT_FILE_NAME = "test_2d_kde" #.root added below
 FIT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "Jan2026_2d_kde.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, "jan2026_2d_kde_overlay.pdf")
-OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, "jan2026_2d_kde_projections.pdf")
-OUTPUT_RATIO = os.path.join(OUTPUT_DIR, "jan2026_2d_kde_ratio.pdf")
+OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_overlay.pdf")
+OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections.pdf")
+OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio.pdf")
 
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
@@ -34,8 +35,11 @@ KDE_PROJECTION_POINTS = 2000
 NDKEYS_NO_MIRROR = "a"
 NDKEYS_MIRROR_BOTH = "am"
 
+# Repo root is three levels up from this script (…/beam_profile_modeling/scripts/).
 DEBUG_LOG_PATH = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), ".cursor", "debug-8940bd.log"
+  os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+  ".cursor",
+  "debug-8940bd.log",
 )
 
 
@@ -1024,6 +1028,7 @@ def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> N
     "data": data,
     "timestamp": int(time.time() * 1000),
   }
+  os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
   with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
     log_file.write(json.dumps(entry) + "\n")
   # #endregion
@@ -1045,8 +1050,15 @@ def plot_projections(
   hy_data = target.ProjectionY(
     f"{target.GetName()}_py_data", 1, target.GetNbinsX(), proj_opt
   )
+  t0 = time.perf_counter()
   gx_kde = kde_projection_x_curve(kde_model, target, f"{target.GetName()}_px_kde")
+  print(f"timing: kde_projection_x_curve {time.perf_counter() - t0:.2f}s "
+        f"({KDE_PROJECTION_POINTS} pts x {target.GetNbinsY()} y-bins)")
+  t0 = time.perf_counter()
   gy_kde = kde_projection_y_curve(kde_model, target, f"{target.GetName()}_py_kde")
+  print(f"timing: kde_projection_y_curve {time.perf_counter() - t0:.2f}s "
+        f"({KDE_PROJECTION_POINTS} pts x {target.GetNbinsX()} x-bins)")
+  t0 = time.perf_counter()
   hx_kde_bins = _kde_hist_on_data_axis(
     hx_data,
     lambda x: _kde_marginal_over_y(kde_model, target, x),
@@ -1057,6 +1069,7 @@ def plot_projections(
     lambda y: _kde_marginal_over_x(kde_model, target, y),
     f"{target.GetName()}_py_kde_bins",
   )
+  print(f"timing: kde_hist_on_data_axis (x+y) {time.perf_counter() - t0:.2f}s")
   x_stats = _projection_stats(hx_data, hx_kde_bins, "mean x")
   y_stats = _projection_stats(hy_data, hy_kde_bins, "mean y")
 
@@ -1143,17 +1156,34 @@ def plot_projections(
 
 def main() -> int:
   show = "--show" in sys.argv
+  t_run = time.perf_counter()
   target, _template, meta, hist_stats, kde_stats = load_fit_objects(FIT_ROOT_FILE)
   rho = float(meta["rho"])
+  t0 = time.perf_counter()
   kde_model = build_kde_model(target, meta)
+  print(f"timing: build_kde_model {time.perf_counter() - t0:.2f}s "
+        f"(bins={target.GetNbinsX()}x{target.GetNbinsY()}, "
+        f"linear_combo={bool(meta.get('linear_combo', 0))})")
+  t0 = time.perf_counter()
   kde_fine = kde_plot_hist(kde_model, "kde_fine_plot")
+  print(f"timing: kde_plot_hist {time.perf_counter() - t0:.2f}s "
+        f"({KDE_PLOT_BINS}x{KDE_PLOT_BINS})")
+  t0 = time.perf_counter()
   kde_on_data = evaluate_kde_on_hist_grid(kde_model, target, "kde_on_data_plot")
+  print(f"timing: evaluate_kde_on_hist_grid {time.perf_counter() - t0:.2f}s")
 
   os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+  t0 = time.perf_counter()
   plot_overlay(target, kde_fine, meta, hist_stats, kde_stats, OUTPUT_OVERLAY)
+  print(f"timing: plot_overlay {time.perf_counter() - t0:.2f}s")
+  t0 = time.perf_counter()
   plot_projections(target, kde_model, OUTPUT_PROJECTIONS)
+  print(f"timing: plot_projections {time.perf_counter() - t0:.2f}s")
+  t0 = time.perf_counter()
   plot_ratio(target, kde_on_data, OUTPUT_RATIO)
+  print(f"timing: plot_ratio {time.perf_counter() - t0:.2f}s")
+  print(f"timing: total {time.perf_counter() - t_run:.2f}s")
 
   if show:
     ROOT.gROOT.SetBatch(False)

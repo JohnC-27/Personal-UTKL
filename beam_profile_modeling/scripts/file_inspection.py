@@ -5,7 +5,7 @@ import ROOT
 
 INPUT_ROOT_FILE = os.path.abspath(
   os.path.join(
-    os.path.dirname(__file__), "..", "root_files", "Jan2026studies_nominal.root"
+    os.path.dirname(__file__), "..", "root_files", "mz_nominal_100bin_run1.root"
   )
 )
 
@@ -17,3 +17,21 @@ if not f or f.IsZombie():
   sys.exit(f"cannot open {INPUT_ROOT_FILE}")
 
 f.ls()
+
+print("\nTH2 sizes:")
+for key in f.GetListOfKeys():
+  obj = key.ReadObj()
+  if not obj or not obj.InheritsFrom("TH2"):
+    continue
+  nx = obj.GetNbinsX()
+  ny = obj.GetNbinsY()
+  xaxis = obj.GetXaxis()
+  yaxis = obj.GetYaxis()
+  print(
+    f"  {obj.GetName()} [{obj.ClassName()}]: "
+    f"{nx} x {ny} bins "
+    f"(x: [{xaxis.GetXmin()}, {xaxis.GetXmax()}], "
+    f"y: [{yaxis.GetXmin()}, {yaxis.GetXmax()}])"
+  )
+
+f.Close()
