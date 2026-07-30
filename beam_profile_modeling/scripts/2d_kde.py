@@ -20,7 +20,7 @@ ROOT.gROOT.SetBatch(True)
 
 
 # ===============================SCRIPT PARAMS===============================
-INPUT_FILE_NAME = "" # .root added below
+INPUT_FILE_NAME = "mz_nominal_100bin_run1" # .root added below
 INPUT_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}.root"
 ) # "nominal_corrected.root" or 

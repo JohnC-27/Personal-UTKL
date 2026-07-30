@@ -2,10 +2,8 @@
 """Plot 2D KDE fit results"""
 
 import array
-import json
 import os
 import sys
-import time
 from dataclasses import dataclass
 
 import ROOT
@@ -13,7 +11,7 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-FIT_FILE_NAME = "test_2d_kde" #.root added below
+FIT_FILE_NAME = "test_2d_kde"  # .root added below
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
@@ -26,21 +24,16 @@ RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
 
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.
-KDE_PLOT_BINS = 200
+# kde eval and point plotting scales as this squared
+KDE_PLOT_BINS = 100
 
 # 1D projection curves: direct PDF marginalization at many x/y sample points.
-KDE_PROJECTION_POINTS = 2000
+# kde eval and point plotting scales as this * x/y bin
+KDE_PROJECTION_POINTS = 200
 
 # 2D RooNDKeysPdf(RooArgSet, ...) takes an options string, not the legacy Mirror enum.
 NDKEYS_NO_MIRROR = "a"
 NDKEYS_MIRROR_BOTH = "am"
-
-# Repo root is three levels up from this script (…/beam_profile_modeling/scripts/).
-DEBUG_LOG_PATH = os.path.join(
-  os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-  ".cursor",
-  "debug-8940bd.log",
-)
 
 
 @dataclass
@@ -307,27 +300,6 @@ def evaluate_kde_th2(
   return out
 
 
-def evaluate_kde_on_hist_grid(
-  model: KdeModel,
-  ref_hist: ROOT.TH2,
-  name: str,
-  *,
-  scaled: bool = True,
-) -> ROOT.TH2D:
-  return evaluate_kde_th2(
-    model,
-    n_bins_x=ref_hist.GetNbinsX(),
-    n_bins_y=ref_hist.GetNbinsY(),
-    xlo=ref_hist.GetXaxis().GetXmin(),
-    xhi=ref_hist.GetXaxis().GetXmax(),
-    ylo=ref_hist.GetYaxis().GetXmin(),
-    yhi=ref_hist.GetYaxis().GetXmax(),
-    name=name,
-    title=ref_hist.GetTitle(),
-    scaled=scaled,
-  )
-
-
 def kde_plot_hist(model: KdeModel, name: str) -> ROOT.TH2D:
   target = model.ctx.x_var
   xlo = target.getMin()
@@ -363,20 +335,14 @@ def _axis_linspace(lo: float, hi: float, n_points: int) -> list[float]:
   return pts
 
 
-def _kde_marginal_over_y(model: KdeModel, ref_hist: ROOT.TH2, x: float) -> float:
-  """Column sum at x using the reference histogram's y bin centers."""
-  return sum(
-    model.scaled_at(x, y)
-    for y in _hist_axis_centers(ref_hist.GetYaxis())
-  )
+def _kde_marginal_over_y(model: KdeModel, x: float, y_centers: list[float]) -> float:
+  """Column sum at x over fixed y sample coordinates."""
+  return sum(model.scaled_at(x, y) for y in y_centers)
 
 
-def _kde_marginal_over_x(model: KdeModel, ref_hist: ROOT.TH2, y: float) -> float:
-  """Row sum at y using the reference histogram's x bin centers."""
-  return sum(
-    model.scaled_at(x, y)
-    for x in _hist_axis_centers(ref_hist.GetXaxis())
-  )
+def _kde_marginal_over_x(model: KdeModel, y: float, x_centers: list[float]) -> float:
+  """Row sum at y over fixed x sample coordinates."""
+  return sum(model.scaled_at(x, y) for x in x_centers)
 
 
 def kde_projection_x_curve(
@@ -390,13 +356,14 @@ def kde_projection_x_curve(
   xlo = ref_hist.GetXaxis().GetXmin()
   xhi = ref_hist.GetXaxis().GetXmax()
   x_values = _axis_linspace(xlo, xhi, n_points)
+  y_centers = _hist_axis_centers(ref_hist.GetYaxis())
   graph = ROOT.TGraph(n_points)
   graph.SetName(name)
   graph.SetTitle(name)
   graph._hold_model = model
 
   for i, x in enumerate(x_values):
-    graph.SetPoint(i, x, _kde_marginal_over_y(model, ref_hist, x))
+    graph.SetPoint(i, x, _kde_marginal_over_y(model, x, y_centers))
 
   return graph
 
@@ -412,13 +379,14 @@ def kde_projection_y_curve(
   ylo = ref_hist.GetYaxis().GetXmin()
   yhi = ref_hist.GetYaxis().GetXmax()
   y_values = _axis_linspace(ylo, yhi, n_points)
+  x_centers = _hist_axis_centers(ref_hist.GetXaxis())
   graph = ROOT.TGraph(n_points)
   graph.SetName(name)
   graph.SetTitle(name)
   graph._hold_model = model
 
   for i, y in enumerate(y_values):
-    graph.SetPoint(i, y, _kde_marginal_over_x(model, ref_hist, y))
+    graph.SetPoint(i, y, _kde_marginal_over_x(model, y, x_centers))
 
   return graph
 
@@ -430,16 +398,21 @@ def _graph_max_y(graph: ROOT.TGraph) -> float:
   return ymax
 
 
-def _graph_y_at_x(graph: ROOT.TGraph, x: float) -> float:
-  best_y = 0.0
-  best_dx = float("inf")
-  for i in range(graph.GetN()):
-    px = graph.GetPointX(i)
-    dx = abs(px - x)
-    if dx < best_dx:
-      best_dx = dx
-      best_y = graph.GetPointY(i)
-  return best_y
+def _th2_axis_projection(hist2: ROOT.TH2, axis: str, name: str) -> ROOT.TH1:
+  """Project a filled KDE TH2 onto x or y; zero bin errors (ratio uses data errors)."""
+  if axis == "x":
+    out = hist2.ProjectionX(name, 1, hist2.GetNbinsY())
+  elif axis == "y":
+    out = hist2.ProjectionY(name, 1, hist2.GetNbinsX())
+  else:
+    raise ValueError(f"axis must be 'x' or 'y', got {axis!r}")
+  out.SetDirectory(0)
+  out.SetStats(0)
+  if out.GetSumw2N() == 0:
+    out.Sumw2()
+  for i in range(1, out.GetNbinsX() + 1):
+    out.SetBinError(i, 0.0)
+  return out
 
 
 def load_fit_objects(filepath: str):
@@ -763,25 +736,6 @@ def _hist_1d_stats(hist: ROOT.TH1) -> tuple[float, float]:
   return total, weighted / total
 
 
-def _kde_hist_on_data_axis(
-  data: ROOT.TH1,
-  marginal_at,
-  name: str,
-) -> ROOT.TH1:
-  """Evaluate the KDE marginal at each data bin center."""
-  out = data.Clone(name)
-  out.SetDirectory(0)
-  out.Reset()
-  out.SetStats(0)
-  if out.GetSumw2N():
-    for i in range(1, out.GetNbinsX() + 1):
-      out.SetBinError(i, 0.0)
-  for i in range(1, data.GetNbinsX() + 1):
-    coord = data.GetXaxis().GetBinCenter(i)
-    out.SetBinContent(i, marginal_at(coord))
-  return out
-
-
 def _make_ratio_hist(data: ROOT.TH1, model: ROOT.TH1, name: str) -> ROOT.TH1:
   ratio = data.Clone(name)
   ratio.SetDirectory(0)
@@ -1017,26 +971,10 @@ def _draw_projection_column(
   parent_pad._projection_model_bins = model_bins
 
 
-def _debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-  # #region agent log
-  entry = {
-    "sessionId": "8940bd",
-    "runId": os.environ.get("DEBUG_RUN_ID", "post-fix"),
-    "hypothesisId": hypothesis_id,
-    "location": location,
-    "message": message,
-    "data": data,
-    "timestamp": int(time.time() * 1000),
-  }
-  os.makedirs(os.path.dirname(DEBUG_LOG_PATH), exist_ok=True)
-  with open(DEBUG_LOG_PATH, "a", encoding="utf-8") as log_file:
-    log_file.write(json.dumps(entry) + "\n")
-  # #endregion
-
-
 def plot_projections(
   target: ROOT.TH2,
   kde_model: KdeModel,
+  kde_on_data: ROOT.TH2,
   outfile: str,
 ) -> None:
   if target.GetSumw2N() == 0:
@@ -1050,51 +988,16 @@ def plot_projections(
   hy_data = target.ProjectionY(
     f"{target.GetName()}_py_data", 1, target.GetNbinsX(), proj_opt
   )
-  t0 = time.perf_counter()
   gx_kde = kde_projection_x_curve(kde_model, target, f"{target.GetName()}_px_kde")
-  print(f"timing: kde_projection_x_curve {time.perf_counter() - t0:.2f}s "
-        f"({KDE_PROJECTION_POINTS} pts x {target.GetNbinsY()} y-bins)")
-  t0 = time.perf_counter()
   gy_kde = kde_projection_y_curve(kde_model, target, f"{target.GetName()}_py_kde")
-  print(f"timing: kde_projection_y_curve {time.perf_counter() - t0:.2f}s "
-        f"({KDE_PROJECTION_POINTS} pts x {target.GetNbinsX()} x-bins)")
-  t0 = time.perf_counter()
-  hx_kde_bins = _kde_hist_on_data_axis(
-    hx_data,
-    lambda x: _kde_marginal_over_y(kde_model, target, x),
-    f"{target.GetName()}_px_kde_bins",
+  hx_kde_bins = _th2_axis_projection(
+    kde_on_data, "x", f"{target.GetName()}_px_kde_bins"
   )
-  hy_kde_bins = _kde_hist_on_data_axis(
-    hy_data,
-    lambda y: _kde_marginal_over_x(kde_model, target, y),
-    f"{target.GetName()}_py_kde_bins",
+  hy_kde_bins = _th2_axis_projection(
+    kde_on_data, "y", f"{target.GetName()}_py_kde_bins"
   )
-  print(f"timing: kde_hist_on_data_axis (x+y) {time.perf_counter() - t0:.2f}s")
   x_stats = _projection_stats(hx_data, hx_kde_bins, "mean x")
   y_stats = _projection_stats(hy_data, hy_kde_bins, "mean y")
-
-  # #region agent log
-  x_probe = 0.0
-  x_bin = hx_data.GetXaxis().FindBin(x_probe)
-  y_bin = hy_data.GetXaxis().FindBin(x_probe)
-  _debug_log(
-    "H1-H2",
-    "plot_2d_kde.py:plot_projections",
-    "projection scale check",
-    {
-      "x_probe": x_probe,
-      "data_px": hx_data.GetBinContent(x_bin),
-      "kde_px": _graph_y_at_x(gx_kde, x_probe),
-      "data_py": hy_data.GetBinContent(y_bin),
-      "kde_py": _graph_y_at_x(gy_kde, x_probe),
-      "sum_data_px": hx_data.Integral(),
-      "sum_data_py": hy_data.Integral(),
-      "n_curve_points": KDE_PROJECTION_POINTS,
-      "ref_bins_x": target.GetNbinsX(),
-      "ref_bins_y": target.GetNbinsY(),
-    },
-  )
-  # #endregion
 
   for h in (hx_data, hy_data):
     h.SetDirectory(0)
@@ -1156,34 +1059,18 @@ def plot_projections(
 
 def main() -> int:
   show = "--show" in sys.argv
-  t_run = time.perf_counter()
-  target, _template, meta, hist_stats, kde_stats = load_fit_objects(FIT_ROOT_FILE)
-  rho = float(meta["rho"])
-  t0 = time.perf_counter()
+  target, kde_template, meta, hist_stats, kde_stats = load_fit_objects(FIT_ROOT_FILE)
+  # Rebuild RooNDKeysPdf from fit_meta (rho/alpha/mix/mirror) for fine grid + curves.
   kde_model = build_kde_model(target, meta)
-  print(f"timing: build_kde_model {time.perf_counter() - t0:.2f}s "
-        f"(bins={target.GetNbinsX()}x{target.GetNbinsY()}, "
-        f"linear_combo={bool(meta.get('linear_combo', 0))})")
-  t0 = time.perf_counter()
   kde_fine = kde_plot_hist(kde_model, "kde_fine_plot")
-  print(f"timing: kde_plot_hist {time.perf_counter() - t0:.2f}s "
-        f"({KDE_PLOT_BINS}x{KDE_PLOT_BINS})")
-  t0 = time.perf_counter()
-  kde_on_data = evaluate_kde_on_hist_grid(kde_model, target, "kde_on_data_plot")
-  print(f"timing: evaluate_kde_on_hist_grid {time.perf_counter() - t0:.2f}s")
+  # Fit kde_template matches a fresh data-grid eval (verified bit-identical).
+  kde_on_data = kde_template
 
   os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-  t0 = time.perf_counter()
   plot_overlay(target, kde_fine, meta, hist_stats, kde_stats, OUTPUT_OVERLAY)
-  print(f"timing: plot_overlay {time.perf_counter() - t0:.2f}s")
-  t0 = time.perf_counter()
-  plot_projections(target, kde_model, OUTPUT_PROJECTIONS)
-  print(f"timing: plot_projections {time.perf_counter() - t0:.2f}s")
-  t0 = time.perf_counter()
+  plot_projections(target, kde_model, kde_on_data, OUTPUT_PROJECTIONS)
   plot_ratio(target, kde_on_data, OUTPUT_RATIO)
-  print(f"timing: plot_ratio {time.perf_counter() - t0:.2f}s")
-  print(f"timing: total {time.perf_counter() - t_run:.2f}s")
 
   if show:
     ROOT.gROOT.SetBatch(False)
