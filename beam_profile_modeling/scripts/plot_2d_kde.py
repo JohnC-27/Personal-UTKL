@@ -11,7 +11,8 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-FIT_FILE_NAME = "test_2d_kde"  # .root added below
+# ===============================SCRIPT PARAMS===============================
+FIT_FILE_NAME = ""  # .root ADDED BELOW
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
@@ -34,7 +35,7 @@ KDE_PROJECTION_POINTS = 200
 # 2D RooNDKeysPdf(RooArgSet, ...) takes an options string, not the legacy Mirror enum.
 NDKEYS_NO_MIRROR = "a"
 NDKEYS_MIRROR_BOTH = "am"
-
+# ===========================================================================
 
 @dataclass
 class KdeEvalContext:
