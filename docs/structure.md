@@ -3,6 +3,7 @@
 ```
 Personal-UTKL/
 ├── README.md           # Short identity
+├── AGENTS.md           # Top level agent description and instructions
 ├── docs/               # Stable documentation (this folder)
 ├── ai/                 # Agent ↔ human working logs and rules
 ├── scripts/            # Main analysis & plotting scripts (ROOT-heavy)
@@ -10,6 +11,7 @@ Personal-UTKL/
 ├── plots/              # Generated figures (PDF/PNG)
 ├── swic/               # SWIC scan data, date folders, readout helpers
 ├── .venv/              # Local Python virtualenv (not source of truth for physics)
+├── .gitignore          # gitignore
 └── .cursor/            # IDE debug dumps (ephemeral)
 ```
 

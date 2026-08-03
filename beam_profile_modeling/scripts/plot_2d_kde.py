@@ -12,7 +12,7 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # ===============================SCRIPT PARAMS===============================
-FIT_FILE_NAME = ""  # .root ADDED BELOW
+FIT_FILE_NAME = "jan2026studies_nominal_corrected_2d_kde"  # .root ADDED BELOW
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )

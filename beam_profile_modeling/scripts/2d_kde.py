@@ -20,23 +20,25 @@ ROOT.gROOT.SetBatch(True)
 
 
 # ===============================SCRIPT PARAMS===============================
-INPUT_FILE_NAME = "mz_nominal_100bin_run1" # .root ADDED BELOW
+INPUT_FILE_NAME = "ml_tracking_hornb_tilt_down_5sigma_beamshift_nY_250um_trackingon" # .root ADDED BELOW
 INPUT_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}.root"
 ) # "nominal_corrected.root" or 
 
-# "nominalxyposMM1" in nominal
-# "nominal_xypos_1" in jan2026 studies
-# NominalxyposMM1" in mz_nominal
-TARGET_HIST_NAME = "NominalxyposMM1" 
+# "nominalxyposMM1" in nominal.root
+# "nominal_xypos_1" in jan2026_studies_nominal.root
+# NominalxyposMM1" in mz_nominal..
+# ShiftxyposMM1 in ml_tracking_hornb...
+TARGET_HIST_NAME = "ShiftxyposMM1" 
 
 OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}_2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", f"negY_250um_2d_kde.root"
 )
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible
 # lattice ripples on the 8 cm histogram grid; ~1.4 is much smoother.
 # To not do a scan, min = max
+# current best 3.5 - low chi2 maintianing smoothness
 RHO_SCAN_MIN = 3.5
 RHO_SCAN_MAX = 3.5
 RHO_SCAN_STEP = 0.1

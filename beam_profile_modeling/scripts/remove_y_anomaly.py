@@ -16,7 +16,7 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 Y_MAX_CM = 80.0
 
 INPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "nominal.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "jan2026studies_nominal.root"
 )
 INPUT_ROOT_FILE2 = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1.root"
@@ -26,14 +26,14 @@ INPUT_ROOT_FILE3 = os.path.join(
 )
 
 OUTPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "nominal_75x75.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "jan2026studies_nominal_corrected.root"
 )
-OUTPUT_ROOT_FILE2 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1_75x75.root"
-)
-OUTPUT_ROOT_FILE3 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2_75x75.root"
-)
+#OUTPUT_ROOT_FILE2 = os.path.join(
+#  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1_75x75.root"
+#)
+#OUTPUT_ROOT_FILE3 = os.path.join(
+#  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2_75x75.root"
+#)
 
 
 
@@ -146,7 +146,7 @@ def write_resized_hists(
     raise OSError(f"cannot create {output_path}")
 
   for hist in hists:
-    resize_th2(hist, x_min=-75, x_max=75, y_min=-75, y_max=75).Write()
+    resize_th2(hist, x_min=-125, x_max=125, y_min=-125, y_max=110).Write()
 
   outfile.Close()
   print(f"Wrote {len(hists)} histograms to {output_path}")
@@ -159,20 +159,20 @@ def write_trimmed_hists(hists: list[ROOT.TH2], output_path: str) -> None:
 def main() -> int:
   nominal_hists = load_th2_group(
     INPUT_ROOT_FILE1,
-    ["nominalxyposMM1", "nominalxyposMM2", "nominalxyposMM3"],
+    ["nominal_xypos_1", "nominal_xypos_2", "nominal_xypos_3"],
   )
-  run1_hists = load_th2_group(
-    INPUT_ROOT_FILE2,
-    ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
-  )
-  run2_hists = load_th2_group(
-    INPUT_ROOT_FILE3,
-    ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
-  )
+  #run1_hists = load_th2_group(
+  #  INPUT_ROOT_FILE2,
+  #  ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
+  #)
+  #run2_hists = load_th2_group(
+  #  INPUT_ROOT_FILE3,
+  #  ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
+  #)
 
   write_trimmed_hists(nominal_hists, OUTPUT_ROOT_FILE1)
-  write_trimmed_hists(run1_hists, OUTPUT_ROOT_FILE2)
-  write_trimmed_hists(run2_hists, OUTPUT_ROOT_FILE3)
+  #write_trimmed_hists(run1_hists, OUTPUT_ROOT_FILE2)
+  #write_trimmed_hists(run2_hists, OUTPUT_ROOT_FILE3)
   return 0
 
 

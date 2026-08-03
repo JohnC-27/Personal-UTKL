@@ -47,9 +47,11 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 CANVAS_WIDTH = 3200
 CANVAS_HEIGHT = 2600
-SURF_PLOT_BINS = 100
+KDE_PLOT_BINS = 200
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
+NDKEYS_NO_MIRROR = "a"
+NDKEYS_MIRROR_BOTH = "am"
 
 
 def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
@@ -123,22 +125,127 @@ def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
   return out
 
 
-def load_kde_shape(filepath: str) -> tuple[ROOT.TH2, dict[str, float | str | int]]:
+class _KdeEvalContext:
+  __slots__ = ("x_var", "y_var", "argset", "dataset")
+
+  def __init__(self, x_var, y_var, argset, dataset):
+    self.x_var = x_var
+    self.y_var = y_var
+    self.argset = argset
+    self.dataset = dataset
+
+
+class KdeModel:
+  __slots__ = (
+    "ctx", "alpha", "mix", "use_linear_combo",
+    "pdf_single", "pdf_unmirrored", "pdf_mirrored",
+  )
+
+  def __init__(
+    self,
+    ctx,
+    alpha,
+    mix,
+    use_linear_combo,
+    pdf_single=None,
+    pdf_unmirrored=None,
+    pdf_mirrored=None,
+  ):
+    self.ctx = ctx
+    self.alpha = alpha
+    self.mix = mix
+    self.use_linear_combo = use_linear_combo
+    self.pdf_single = pdf_single
+    self.pdf_unmirrored = pdf_unmirrored
+    self.pdf_mirrored = pdf_mirrored
+
+  def shape_at(self, x: float, y: float) -> float:
+    self.ctx.x_var.setVal(x)
+    self.ctx.y_var.setVal(y)
+    if self.use_linear_combo:
+      u = self.pdf_unmirrored.getVal(self.ctx.argset)
+      m = self.pdf_mirrored.getVal(self.ctx.argset)
+      return self.mix * u + (1.0 - self.mix) * m
+    return self.pdf_single.getVal(self.ctx.argset)
+
+  def scaled_at(self, x: float, y: float) -> float:
+    return self.alpha * self.shape_at(x, y)
+
+
+def load_kde_shape(filepath: str) -> tuple[ROOT.TH2, ROOT.TH2, dict[str, float | str | int]]:
   tfile = ROOT.TFile.Open(filepath, "READ")
   if not tfile or tfile.IsZombie():
     raise OSError(f"cannot open {filepath}")
 
   kde_shape = tfile.Get("kde_shape")
+  train_target = tfile.Get("target_hist")
   meta = tfile.Get("fit_meta")
-  if not kde_shape or not meta:
+  if not kde_shape or not train_target or not meta:
     tfile.Close()
-    raise KeyError(f"missing kde_shape or fit_meta in {filepath}")
+    raise KeyError(f"missing kde_shape, target_hist, or fit_meta in {filepath}")
 
   kde_shape = kde_shape.Clone("kde_shape_test")
   kde_shape.SetDirectory(0)
+  train_target = train_target.Clone("kde_train_target")
+  train_target.SetDirectory(0)
   meta_dict = parse_fit_meta(meta)
   tfile.Close()
-  return kde_shape, meta_dict
+  return kde_shape, train_target, meta_dict
+
+
+def _hist_to_dataset(hist: ROOT.TH2) -> _KdeEvalContext:
+  x_var = ROOT.RooRealVar(
+    "plot_x", "x [cm]", hist.GetXaxis().GetXmin(), hist.GetXaxis().GetXmax()
+  )
+  y_var = ROOT.RooRealVar(
+    "plot_y", "y [cm]", hist.GetYaxis().GetXmin(), hist.GetYaxis().GetXmax()
+  )
+  argset = ROOT.RooArgSet(x_var, y_var)
+  w_var = ROOT.RooRealVar("plot_w", "weight", 0.0, 1.0e20)
+  dataset = ROOT.RooDataSet(
+    "plot_weighted_points", "plot_weighted_points", argset, ROOT.RooFit.WeightVar(w_var)
+  )
+  for ix in range(1, hist.GetNbinsX() + 1):
+    x_var.setVal(hist.GetXaxis().GetBinCenter(ix))
+    for iy in range(1, hist.GetNbinsY() + 1):
+      content = hist.GetBinContent(ix, iy)
+      if content <= 0:
+        continue
+      y_var.setVal(hist.GetYaxis().GetBinCenter(iy))
+      w_var.setVal(content)
+      dataset.add(argset, content)
+  return _KdeEvalContext(x_var, y_var, argset, dataset)
+
+
+def build_kde_model(train_target: ROOT.TH2, meta: dict[str, float | str | int]) -> KdeModel:
+  ctx = _hist_to_dataset(train_target)
+  rho = float(meta["rho"])
+  use_linear_combo = bool(meta.get("linear_combo", 0))
+  mix = float(meta.get("mix", 1.0))
+  opt_no = str(meta.get("ndkeys_no_mirror", NDKEYS_NO_MIRROR))
+  opt_m = str(meta.get("ndkeys_mirror", NDKEYS_MIRROR_BOTH))
+  if use_linear_combo:
+    return KdeModel(
+      ctx,
+      float(meta["alpha"]),
+      mix,
+      True,
+      pdf_unmirrored=ROOT.RooNDKeysPdf(
+        "test_kde_u", "test_kde_u", ctx.argset, ctx.dataset, opt_no, rho
+      ),
+      pdf_mirrored=ROOT.RooNDKeysPdf(
+        "test_kde_m", "test_kde_m", ctx.argset, ctx.dataset, opt_m, rho
+      ),
+    )
+  return KdeModel(
+    ctx,
+    float(meta["alpha"]),
+    1.0,
+    False,
+    pdf_single=ROOT.RooNDKeysPdf(
+      "test_kde", "test_kde", ctx.argset, ctx.dataset, opt_m, rho
+    ),
+  )
 
 
 def open_histogram2d(filepath: str, hist_name: str) -> ROOT.TH2:
@@ -476,26 +583,37 @@ def _style_surf_hist(
   return _style_surf3d_axes(hist)
 
 
-def interpolate_th2(hist: ROOT.TH2, n_bins: int, name: str) -> ROOT.TH2D:
-  xlo = hist.GetXaxis().GetXmin()
-  xhi = hist.GetXaxis().GetXmax()
-  ylo = hist.GetYaxis().GetXmin()
-  yhi = hist.GetYaxis().GetXmax()
-  out = ROOT.TH2D(name, hist.GetTitle(), n_bins, xlo, xhi, n_bins, ylo, yhi)
+def evaluate_kde_fine(
+  model: KdeModel,
+  ref_hist: ROOT.TH2,
+  name: str,
+) -> ROOT.TH2D:
+  """Direct RooNDKeysPdf evaluation on a fine grid (not TH2 Interpolate)."""
+  xlo = min(model.ctx.x_var.getMin(), ref_hist.GetXaxis().GetXmin())
+  xhi = max(model.ctx.x_var.getMax(), ref_hist.GetXaxis().GetXmax())
+  ylo = min(model.ctx.y_var.getMin(), ref_hist.GetYaxis().GetXmin())
+  yhi = max(model.ctx.y_var.getMax(), ref_hist.GetYaxis().GetXmax())
+  model.ctx.x_var.setRange(xlo, xhi)
+  model.ctx.y_var.setRange(ylo, yhi)
+  out = ROOT.TH2D(
+    name,
+    "#alpha#timesKDE(x,y)",
+    KDE_PLOT_BINS,
+    ref_hist.GetXaxis().GetXmin(),
+    ref_hist.GetXaxis().GetXmax(),
+    KDE_PLOT_BINS,
+    ref_hist.GetYaxis().GetXmin(),
+    ref_hist.GetYaxis().GetXmax(),
+  )
   out.SetDirectory(0)
   out.SetStats(0)
-
-  for ix in range(1, n_bins + 1):
+  out._hold_model = model
+  for ix in range(1, KDE_PLOT_BINS + 1):
     x = out.GetXaxis().GetBinCenter(ix)
-    for iy in range(1, n_bins + 1):
+    for iy in range(1, KDE_PLOT_BINS + 1):
       y = out.GetYaxis().GetBinCenter(iy)
-      out.SetBinContent(ix, iy, hist.Interpolate(x, y))
-
+      out.SetBinContent(ix, iy, model.scaled_at(x, y))
   return out
-
-
-def surf_plot_hist(hist: ROOT.TH2, name: str) -> ROOT.TH2D:
-  return interpolate_th2(hist, SURF_PLOT_BINS, name)
 
 
 def _set_diverging_ratio_palette() -> None:
@@ -588,7 +706,8 @@ def _draw_projection_on_pad(
 def _draw_overlay_on_pad(
   pad: ROOT.TPad,
   data: ROOT.TH2,
-  template: ROOT.TH2,
+  model: KdeModel,
+  alpha: float,
 ) -> list:
   pad.cd()
   _configure_surf_pad(pad)
@@ -596,7 +715,8 @@ def _draw_overlay_on_pad(
   data_plot = data.Clone(f"{data.GetName()}_overlay")
   data_plot.SetDirectory(0)
   data_plot.SetStats(0)
-  kde_surf = surf_plot_hist(template, f"{template.GetName()}_overlay_surf")
+  model.alpha = alpha
+  kde_surf = evaluate_kde_fine(model, data, f"{data.GetName()}_overlay_surf")
 
   data_plot.SetTitle("Data with #alpha#timesKDE(x,y) surface")
   axis_titles = _style_surf_hist(data_plot, line_color=ROOT.kBlue + 1)
@@ -694,6 +814,7 @@ def _draw_fit_params(
 def plot_combined_summary(
   data: ROOT.TH2,
   fit: dict,
+  model: KdeModel,
   run_label: str,
   rho: float,
   mix: float,
@@ -718,7 +839,9 @@ def plot_combined_summary(
     pad.Draw()
 
   keepalive: list = []
-  keepalive.extend(_draw_overlay_on_pad(pad_overlay, data, template))
+  keepalive.extend(
+    _draw_overlay_on_pad(pad_overlay, data, model, float(fit["alpha"]))
+  )
   keepalive.extend(_draw_ratio_on_pad(pad_ratio, data, template))
   keepalive.extend(
     _draw_projection_on_pad(
@@ -864,7 +987,8 @@ def main() -> int:
     f"(factors {rebin_factor_x}x{rebin_factor_y})"
   )
   print(f"Loading 2D KDE shape from {KDE_ROOT_FILE}")
-  kde_shape, meta = load_kde_shape(KDE_ROOT_FILE)
+  kde_shape, train_target, meta = load_kde_shape(KDE_ROOT_FILE)
+  kde_model = build_kde_model(train_target, meta)
   rho = meta["rho"]
   mix = meta.get("mix", float("nan"))
   linear_combo = bool(meta.get("linear_combo", 1))
@@ -933,6 +1057,7 @@ def main() -> int:
     plot_combined_summary(
       run_data,
       run_fit,
+      kde_model,
       run_label,
       rho,
       mix,
