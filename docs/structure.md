@@ -65,7 +65,7 @@ Channel CSVs are wide (≈96 useful columns after skips); `readout_functions.spl
 
 | Folder | Stability | Content |
 |--------|-----------|---------|
-| `docs/` | Stable, curated | Goals, structure, overview — change when the project direction or layout changes |
+| `docs/` | Stable, curated | Overview (incl. docs map), goals, structure, ROOT catalog — change when the project direction or layout changes |
 | `ai/` | Living | Active task, work/debug/context logs — update every meaningful session |
 
 ## What not to treat as source of truth

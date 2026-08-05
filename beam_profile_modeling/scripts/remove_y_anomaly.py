@@ -1,9 +1,9 @@
 """
 Resize TH2 histograms by trimming bins outside requested axis bounds.
 
-By default, nominal beam-position histograms are trimmed at y >= 80 cm to remove
-suspected non-physical beam behavior. Bounds for both x and y axes can be set
-independently via resize_th2().
+By default, nominal beam-position histograms are trimmed at y >= 90 cm to remove
+suspected non-physical beam behavior.
+Bounds for both x and y axes can be set independently via resize_th2().
 """
 import os
 import sys
@@ -13,24 +13,24 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-Y_MAX_CM = 80.0
+Y_MAX_CM = 90.0
 
 INPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "jan2026studies_nominal.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "posX_100um_100bin.root"
 )
 INPUT_ROOT_FILE2 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "negX_100um_100bin.root"
 )
 INPUT_ROOT_FILE3 = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2.root"
 )
 
 OUTPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "jan2026studies_nominal_corrected.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "posX_100um_100bin_corrected.root"
 )
-#OUTPUT_ROOT_FILE2 = os.path.join(
-#  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run1_75x75.root"
-#)
+OUTPUT_ROOT_FILE2 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "negX_100um_100bin_corrected.root"
+)
 #OUTPUT_ROOT_FILE3 = os.path.join(
 #  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2_75x75.root"
 #)
@@ -129,10 +129,6 @@ def resize_th2(
   return out
 
 
-def trim_hist_y_max(hist: ROOT.TH2, y_max_cm: float = Y_MAX_CM) -> ROOT.TH2:
-  return resize_th2(hist, y_max=y_max_cm)
-
-
 def write_resized_hists(
   hists: list[ROOT.TH2],
   output_path: str,
@@ -146,7 +142,7 @@ def write_resized_hists(
     raise OSError(f"cannot create {output_path}")
 
   for hist in hists:
-    resize_th2(hist, x_min=-125, x_max=125, y_min=-125, y_max=110).Write()
+    resize_th2(hist, x_min=-100, x_max=100, y_min=-y_max, y_max=y_max).Write()
 
   outfile.Close()
   print(f"Wrote {len(hists)} histograms to {output_path}")
@@ -159,19 +155,19 @@ def write_trimmed_hists(hists: list[ROOT.TH2], output_path: str) -> None:
 def main() -> int:
   nominal_hists = load_th2_group(
     INPUT_ROOT_FILE1,
-    ["nominal_xypos_1", "nominal_xypos_2", "nominal_xypos_3"],
+    ["ShiftxyposMM1", "ShiftxyposMM1", "ShiftxyposMM1"],
   )
-  #run1_hists = load_th2_group(
-  #  INPUT_ROOT_FILE2,
-  #  ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
-  #)
+  run1_hists = load_th2_group(
+    INPUT_ROOT_FILE2,
+    ["ShiftxyposMM1", "ShiftxyposMM1", "ShiftxyposMM1"],
+  )
   #run2_hists = load_th2_group(
   #  INPUT_ROOT_FILE3,
   #  ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
   #)
 
   write_trimmed_hists(nominal_hists, OUTPUT_ROOT_FILE1)
-  #write_trimmed_hists(run1_hists, OUTPUT_ROOT_FILE2)
+  write_trimmed_hists(run1_hists, OUTPUT_ROOT_FILE2)
   #write_trimmed_hists(run2_hists, OUTPUT_ROOT_FILE3)
   return 0
 

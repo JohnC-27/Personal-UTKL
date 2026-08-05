@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Rebin the high-resolution TH2s histograms and
+Rebin the square high-resolution TH2s histograms and
 write lower-resolution copies.
+Rebins all TH2s in the .root.
+Input and output are square.
 """
 
 import math
@@ -17,19 +19,19 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 N_OUTPUT_BINS = 100
 
 # Assumes square TH2
-SOURCE_BINS = 200
+SOURCE_BINS = 2000
 ROOT_FILES_DIR = os.path.join(os.path.dirname(__file__), "..", "root_files")
 
 SOURCE_FILES = {
-  1: os.path.join(ROOT_FILES_DIR, "mz_nominal_2000bin_run1.root"),
-  2: os.path.join(ROOT_FILES_DIR, "mz_nominal_2000bin_run2.root"),
+  1: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_nominal_trackingon.root"),
+  2: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_nominal_trackingon.root"),
 }
 
-
-def output_path(run: int, n_output_bins: int) -> str:
-  return os.path.join(
-    ROOT_FILES_DIR, f"mz_nominal_{n_output_bins}bin_run{run}.root"
-  )
+# Must be in same order as source files
+OUTPUT_FILES = {
+  1: os.path.join(ROOT_FILES_DIR, f"ml_tracking_nominal_{N_OUTPUT_BINS}bin.root"),
+  2: os.path.join(ROOT_FILES_DIR, f"ml_tracking_nominal_{N_OUTPUT_BINS}bin.root")
+}
 
 
 def list_th2_keys(filepath: str) -> list[str]:
@@ -117,7 +119,7 @@ def verify_sumw2_errors(hist: ROOT.TH2, label: str) -> bool:
 
 def rebin_run(run: int, n_output_bins: int) -> str:
   source_file = SOURCE_FILES[run]
-  outfile = output_path(run, n_output_bins)
+  outfile = OUTPUT_FILES[run]
   hist_names = list_th2_keys(source_file)
 
   rebinned_hists: list[ROOT.TH2] = []
@@ -130,6 +132,8 @@ def rebin_run(run: int, n_output_bins: int) -> str:
   fout = ROOT.TFile.Open(outfile, "RECREATE")
   if not fout or fout.IsZombie():
     raise OSError(f"cannot create output file: {outfile}")
+
+  
 
   for hist in rebinned_hists:
     hist.SetDirectory(fout)
@@ -145,6 +149,9 @@ def main() -> int:
     f"Rebinning {SOURCE_BINS}x{SOURCE_BINS} TH2s to "
     f"{N_OUTPUT_BINS}x{N_OUTPUT_BINS} bins"
   )
+
+  if len(SOURCE_FILES) != len(OUTPUT_FILES):
+    print("Number of source files != number of output files.")
 
   for run in sorted(SOURCE_FILES):
     outfile = rebin_run(run, N_OUTPUT_BINS)

@@ -1,5 +1,18 @@
 # Overview
 
+Human- and agent-facing documentation for **Personal-UTKL**.
+
+## Docs map
+
+| File | Purpose |
+|------|---------|
+| [overview.md](overview.md) | What this repo is, who it is for, stack, and this map |
+| [structure.md](structure.md) | Directory layout, data/script conventions, key artifacts |
+| [goals.md](goals.md) | Research and engineering goals, success criteria, open questions |
+| [root_file_catalog.md](root_file_catalog.md) | Catalog of `.root` files and TH2 names/sizes |
+
+For session state, debugging history, and agent rules, see [`../ai/`](../ai/).
+
 ## What this repo is
 
 **Personal-UTKL** is a personal working repository for UTKL lab analysis: Python scripts that inspect ROOT histograms, build and tune KDE models of beam/profile distributions, compare model vs data, and produce plots. A second track (`swic/`) covers SWIC scan readout and channel analysis from CSV.
