@@ -13,31 +13,41 @@ import ROOT
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
-Y_MAX_CM = 90.0
+TRIM_ANOMALY = True
+Y_MAX_CM = 95.0
+# trim 5-10cm to remove the anomaly
 
 INPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "posX_100um_100bin.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_pX_100um_25bin.root"
 )
 INPUT_ROOT_FILE2 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "negX_100um_100bin.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nX_100um_25bin.root"
 )
 INPUT_ROOT_FILE3 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_pY_250um_25bin.root"
+)
+INPUT_ROOT_FILE4 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nY_250um_25bin.root"
+)
+INPUT_ROOT_FILE5 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_nominal_25bin.root"
 )
 
 OUTPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "posX_100um_100bin_corrected.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_pX_100um_25bin_corrected.root"
 )
 OUTPUT_ROOT_FILE2 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "negX_100um_100bin_corrected.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nX_100um_25bin_corrected.root"
 )
-#OUTPUT_ROOT_FILE3 = os.path.join(
-#  os.path.dirname(os.path.dirname(__file__)), "root_files", "mz_nominal_2000bin_run2_75x75.root"
-#)
-
-
-
-
+OUTPUT_ROOT_FILE3 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_pY_250um_25bin_corrected.root"
+)
+OUTPUT_ROOT_FILE4 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nY_250um_25bin_corrected.root"
+)
+OUTPUT_ROOT_FILE5 = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_nominal_25bin_corrected.root"
+)
 
 
 def load_th2_group(
@@ -129,12 +139,9 @@ def resize_th2(
   return out
 
 
-def write_resized_hists(
+def write_trimmed_hists(
   hists: list[ROOT.TH2],
   output_path: str,
-  x_min: float | None = None,
-  x_max: float | None = None,
-  y_min: float | None = None,
   y_max: float | None = None,
 ) -> None:
   outfile = ROOT.TFile.Open(output_path, "RECREATE")
@@ -142,33 +149,42 @@ def write_resized_hists(
     raise OSError(f"cannot create {output_path}")
 
   for hist in hists:
-    resize_th2(hist, x_min=-100, x_max=100, y_min=-y_max, y_max=y_max).Write()
+    x_min = hist.GetXaxis().GetXmin()
+    x_max = hist.GetXaxis().GetXmax()
+    resize_th2(hist, x_min=x_min, x_max=x_max, y_min=-y_max, y_max=y_max).Write()
 
   outfile.Close()
   print(f"Wrote {len(hists)} histograms to {output_path}")
 
 
-def write_trimmed_hists(hists: list[ROOT.TH2], output_path: str) -> None:
-  write_resized_hists(hists, output_path, y_max=Y_MAX_CM)
-
 
 def main() -> int:
-  nominal_hists = load_th2_group(
+  group1_hists = load_th2_group(
     INPUT_ROOT_FILE1,
-    ["ShiftxyposMM1", "ShiftxyposMM1", "ShiftxyposMM1"],
+    ["ShiftxyposMM1", "ShiftxyposMM2", "ShiftxyposMM3"],
   )
-  run1_hists = load_th2_group(
+  group2_hists = load_th2_group(
     INPUT_ROOT_FILE2,
-    ["ShiftxyposMM1", "ShiftxyposMM1", "ShiftxyposMM1"],
+    ["ShiftxyposMM1", "ShiftxyposMM2", "ShiftxyposMM3"],
   )
-  #run2_hists = load_th2_group(
-  #  INPUT_ROOT_FILE3,
-  #  ["NominalxyposMM1", "NominalxyposMM2", "NominalxyposMM3"],
-  #)
+  group3_hists = load_th2_group(
+    INPUT_ROOT_FILE3,
+    ["ShiftxyposMM1", "ShiftxyposMM2", "ShiftxyposMM3"],
+  )
+  group4_hists = load_th2_group(
+    INPUT_ROOT_FILE4,
+    ["ShiftxyposMM1", "ShiftxyposMM2", "ShiftxyposMM3"],
+  )
+  group5_hists = load_th2_group(
+    INPUT_ROOT_FILE5,
+    ["ShiftxyposMM1", "ShiftxyposMM2", "ShiftxyposMM3"],
+  )
 
-  write_trimmed_hists(nominal_hists, OUTPUT_ROOT_FILE1)
-  write_trimmed_hists(run1_hists, OUTPUT_ROOT_FILE2)
-  #write_trimmed_hists(run2_hists, OUTPUT_ROOT_FILE3)
+  write_trimmed_hists(group1_hists, OUTPUT_ROOT_FILE1, Y_MAX_CM)
+  write_trimmed_hists(group2_hists, OUTPUT_ROOT_FILE2, Y_MAX_CM)
+  write_trimmed_hists(group3_hists, OUTPUT_ROOT_FILE3, Y_MAX_CM)
+  write_trimmed_hists(group4_hists, OUTPUT_ROOT_FILE4, Y_MAX_CM)
+  write_trimmed_hists(group5_hists, OUTPUT_ROOT_FILE5, Y_MAX_CM)
   return 0
 
 

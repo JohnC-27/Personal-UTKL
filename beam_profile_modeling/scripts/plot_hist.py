@@ -10,20 +10,22 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # ===============================SCRIPT PARAMS===============================
+# Change INPUT, HIST_NAME, OUTPUT FILES, PLOT TITLES
+
 # Entries, mean_x, mean_y, rms_x, rms_y (ROOT computes these from the TH2).
 ROOT.gStyle.SetOptStat("neMmRr")
 # Means/RMS/stats use in-range bins only (exclude under/overflow).
 ROOT.TH1.StatOverflows(False)
 
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_tracking_hornb_tilt_down_5sigma_beamshift_pY_250um_trackingon.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nX_100um_25bin_corrected.root"
 )
 
 HIST_NAME = "ShiftxyposMM1"
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_2D = os.path.join(OUTPUT_DIR, "_colz.pdf")
-OUTPUT_3D = os.path.join(OUTPUT_DIR, "test_shift_pY_surf3d.pdf")
-OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "test_shift_pY_xyproj.pdf")
+OUTPUT_2D = os.path.join(OUTPUT_DIR, "ml_beamshift_nX_100um_25bin_corrected_colz.pdf")
+OUTPUT_3D = os.path.join(OUTPUT_DIR, "ml_beamshift_nX_100um_25bin_corrected_surf3d.pdf")
+OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "ml_beamshift_nX_100um_25bin_corrected_xyproj.pdf")
 
 REBIN = False
 N_OUTPUT_BINS_X = 200
@@ -36,8 +38,9 @@ SHOW_STATS = True
 STATS_BOX_COLZ = (0.14, 0.68, 0.42, 0.90)
 STATS_BOX_PROJ = (0.37, 0.2, 0.67, 0.4)
 
-PLOT_TITLE_3D = ""
-PLOT_TITLE_PROJ = "+Y 250um Beamshift" # adds "X/Y Projection"
+# "" defaults to histogram name (or title?)
+PLOT_TITLE_3D = "-100um x shift MM1"
+PLOT_TITLE_PROJ = "-100um x shift MM1" # adds "X/Y Projection"
 # ===========================================================================
 
 

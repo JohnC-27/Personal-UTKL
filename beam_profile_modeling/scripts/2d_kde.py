@@ -20,9 +20,9 @@ ROOT.gROOT.SetBatch(True)
 
 
 # ===============================SCRIPT PARAMS===============================
-INPUT_FILE_NAME = "ml_tracking_hornb_tilt_down_5sigma_beamshift_nY_250um_trackingon" # .root ADDED BELOW
+INPUT_FILE_NAME = "ml_nominal_100bin_corrected.root"
 INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}.root"
+  os.path.dirname(__file__), "..", "root_files", INPUT_FILE_NAME
 ) # "nominal_corrected.root" or 
 
 # "nominalxyposMM1" in nominal.root
@@ -32,12 +32,12 @@ INPUT_ROOT_FILE = os.path.join(
 TARGET_HIST_NAME = "ShiftxyposMM1" 
 
 OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", f"negY_250um_2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", f"ml_nominal_mm1_2d_kde.root"
 )
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible
 # lattice ripples on the 8 cm histogram grid; ~1.4 is much smoother.
-# To not do a scan, min = max
+# To not scan, min = max
 # current best 3.5 - low chi2 maintianing smoothness
 RHO_SCAN_MIN = 3.5
 RHO_SCAN_MAX = 3.5

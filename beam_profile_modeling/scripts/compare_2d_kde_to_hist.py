@@ -5,15 +5,19 @@ Overlay the 2D KDE from a fit ROOT file on a general TH2 histogram.
 Display-only: rebins and/or restricts the histogram in memory for plotting and
 statistics. Does not write or modify any ROOT files.
 
-The live RooNDKeysPdf is rebuilt from target_hist + fit_meta. Overlay SURF and
-projection curves evaluate the PDF directly on a fine grid (KDE_PLOT_BINS /
-KDE_PROJECTION_POINTS). Chi2 uses PDF values at data-bin centers — never TH2
-Interpolate of a coarse binned KDE shape.
+Plain fit products: rebuild RooNDKeysPdf from target_hist + fit_meta. Overlay
+SURF and projection curves evaluate the PDF on a fine grid (KDE_OVERLAY_POINTS /
+KDE_PROJECTION_POINTS). Chi2 uses PDF values at data-bin centers.
+
+Shifted / combined products (shift_kde.py): target_hist is not the model.
+Use stored kde_template (bin copy or Interpolate) so means/χ² match
+shift_kde; live rebuild would ignore shift_*/combine_*.
 
 Outputs (plot_2d_kde.py style):
-  - overlay: data + alpha*KDE surface, KDE alone, region stats
-  - projections: X/Y with Data/KDE ratio and per-bin chi2 contributions
-  - chi2 contribution lego (standalone)
+  - overlay: data + alpha*KDE surface, KDE alone, region stats (WLS alpha)
+  - projections: X/Y with Data/KDE ratio and per-bin chi2; KDE uses
+    integral-matched alpha for display (curve, ratio, projection chi2/stats)
+  - chi2 contribution lego (standalone; 2D WLS alpha)
 """
 
 import array
@@ -29,13 +33,13 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # ===============================SCRIPT PARAMS===============================
 # target hist file and hist name
 HIST_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_100bin_run1.root"
+  os.path.dirname(__file__), "..", "root_files", "ml_beamshift_nX_100um_100bin_corrected.root"
 )
-HIST_NAME = "NominalxyposMM1"
+HIST_NAME = "ShiftxyposMM1"
 
-# This should be the current best nominal beam profile model
+
 KDE_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "jan2026studies_nominal_corrected_2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", "ml_nominal_mm1_2d_kde_plus_pX_100um_mm1_2d_kde_sA(-0.0912,0)_sB(0.06108,0)_c(0.5,0.5).root"
 )
 
 # Rebin option here for hists >100 bins each axis or so
@@ -47,14 +51,23 @@ REBIN_FACTOR_Y = 1
 # Restriction for getting the "good area" of the KDE (roughly the middle 80% of each axis)
 # After rebinning, keep a centered Nx x Ny window for plot + stats (None = all).
 # int = bins to keep on that axis after rebin (centered crop so oringinal nbins must be even)
-RESTRICT_NBINS_X = 72
-RESTRICT_NBINS_Y = 72
+RESTRICT_NBINS_X = 60
+RESTRICT_NBINS_Y = 60
 
 OUTPUT_TAG = "2d_kde_vs"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
-# Fine PDF evaluation grid for SURF overlays (not the data bin grid).
-KDE_PLOT_BINS = 200
+# Plot titles (projections / chi2 append suffixes below)
+PLOT_TITLE = "Combined -100 and +100um shifts vs nominal hist"
+PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
+PLOT_TITLE_KDE_TEMPLATE = "KDE"
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} x projection"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE} y projection"
+PLOT_TITLE_CHI2 = f"{PLOT_TITLE} #chi^{{2}} contribution"
+
+# Direct RooNDKeysPdf evaluation grid for 2D surfaces.
+# kde eval and point plotting scales as this squared
+KDE_OVERLAY_POINTS = 200 # PER AXIS -> 100 by 100 = 10,000 points over the plane
 # Continuous projection curves: PDF marginalization sample count per axis.
 KDE_PROJECTION_POINTS = 200
 
@@ -121,6 +134,50 @@ class KdeModel:
     return self.alpha * self.shape_at(x, y)
 
 
+@dataclass
+class StoredShapeModel:
+  """Model backed by stored kde_template (for shift/combine fit products)."""
+
+  shape: ROOT.TH2
+  alpha: float = 1.0
+
+  def shape_at(self, x: float, y: float) -> float:
+    xaxis = self.shape.GetXaxis()
+    yaxis = self.shape.GetYaxis()
+    if not (xaxis.GetXmin() <= x <= xaxis.GetXmax()):
+      return 0.0
+    if not (yaxis.GetXmin() <= y <= yaxis.GetXmax()):
+      return 0.0
+    ix = xaxis.FindFixBin(x)
+    iy = yaxis.FindFixBin(y)
+    nbx = self.shape.GetNbinsX()
+    nby = self.shape.GetNbinsY()
+    if ix < 1 or ix > nbx or iy < 1 or iy > nby:
+      return 0.0
+    # ROOT Interpolate is undefined near the outer bin rim; use bin content there.
+    if ix == 1 or ix == nbx or iy == 1 or iy == nby:
+      return float(self.shape.GetBinContent(ix, iy))
+    return float(self.shape.Interpolate(x, y))
+
+  def scaled_at(self, x: float, y: float) -> float:
+    return self.alpha * self.shape_at(x, y)
+
+
+def fit_has_spatial_ops(meta: dict[str, float | str | int]) -> bool:
+  """True if fit_meta records a shift_kde shift and/or combine."""
+  keys = (
+    "shift_x",
+    "shift_y",
+    "shift_a_x",
+    "shift_a_y",
+    "shift_b_x",
+    "shift_b_y",
+    "combine_coeff_a",
+    "combine_coeff_b",
+  )
+  return any(key in meta for key in keys)
+
+
 def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
   out: dict[str, float | str | int] = {}
   for part in meta.GetTitle().split(";"):
@@ -136,23 +193,62 @@ def parse_fit_meta(meta: ROOT.TNamed) -> dict[str, float | str | int]:
   return out
 
 
-def load_kde_fit(filepath: str) -> tuple[ROOT.TH2, dict[str, float | str | int]]:
-  """Load training target + fit_meta used to rebuild RooNDKeysPdf for plotting."""
+def load_kde_fit(
+  filepath: str,
+) -> tuple[ROOT.TH2, dict[str, float | str | int], ROOT.TH2, ROOT.TH2]:
+  """Load target_hist, fit_meta, kde_shape, and kde_template from a fit product."""
   tfile = ROOT.TFile.Open(filepath, "READ")
   if not tfile or tfile.IsZombie():
     raise OSError(f"cannot open {filepath}")
 
   train_target = tfile.Get("target_hist")
   meta = tfile.Get("fit_meta")
-  if not train_target or not meta:
+  kde_shape = tfile.Get("kde_shape")
+  kde_template = tfile.Get("kde_template")
+  if not train_target or not meta or not kde_shape or not kde_template:
     tfile.Close()
-    raise KeyError(f"missing target_hist or fit_meta in {filepath}")
+    raise KeyError(
+      f"missing target_hist, fit_meta, kde_shape, or kde_template in {filepath}"
+    )
 
   train_target = train_target.Clone("kde_train_target")
   train_target.SetDirectory(0)
+  kde_shape = kde_shape.Clone("kde_shape_compare")
+  kde_shape.SetDirectory(0)
+  kde_template = kde_template.Clone("kde_template_compare")
+  kde_template.SetDirectory(0)
   meta_dict = parse_fit_meta(meta)
   tfile.Close()
-  return train_target, meta_dict
+  return train_target, meta_dict, kde_shape, kde_template
+
+
+def th2_axes_match(a: ROOT.TH2, b: ROOT.TH2) -> bool:
+  if a.GetNbinsX() != b.GetNbinsX() or a.GetNbinsY() != b.GetNbinsY():
+    return False
+  ax, bx = a.GetXaxis(), b.GetXaxis()
+  ay, by = a.GetYaxis(), b.GetYaxis()
+  edges = (
+    (ax.GetXmin(), bx.GetXmin()),
+    (ax.GetXmax(), bx.GetXmax()),
+    (ay.GetXmin(), by.GetXmin()),
+    (ay.GetXmax(), by.GetXmax()),
+  )
+  for va, vb in edges:
+    if abs(va - vb) > 1e-9 * max(1.0, abs(va), abs(vb)):
+      return False
+  return True
+
+
+def copy_th2_contents(source: ROOT.TH2, ref_hist: ROOT.TH2, name: str) -> ROOT.TH2D:
+  """Clone ref_hist binning and copy source bin contents (axes must match)."""
+  out = ref_hist.Clone(name)
+  out.SetDirectory(0)
+  out.Reset()
+  out.SetTitle("KDE shape on data grid")
+  for ix in range(1, out.GetNbinsX() + 1):
+    for iy in range(1, out.GetNbinsY() + 1):
+      out.SetBinContent(ix, iy, source.GetBinContent(ix, iy))
+  return out
 
 
 def histogram_to_weighted_dataset(hist: ROOT.TH2) -> KdeEvalContext:
@@ -227,7 +323,7 @@ def build_kde_model(train_target: ROOT.TH2, meta: dict[str, float | str | int]) 
 
 
 def evaluate_kde_th2(
-  model: KdeModel,
+  model: KdeModel | StoredShapeModel,
   *,
   n_bins_x: int,
   n_bins_y: int,
@@ -252,14 +348,18 @@ def evaluate_kde_th2(
   return out
 
 
-def kde_fine_plot_hist(model: KdeModel, ref_hist: ROOT.TH2, name: str) -> ROOT.TH2D:
-  """Direct PDF evaluation on a fine grid spanning the displayed histogram axes."""
+def kde_fine_plot_hist(
+  model: KdeModel | StoredShapeModel,
+  ref_hist: ROOT.TH2,
+  name: str,
+) -> ROOT.TH2D:
+  """Evaluate model on a fine grid spanning the displayed histogram axes."""
   xtitle = ref_hist.GetXaxis().GetTitle() or "x [cm]"
   ytitle = ref_hist.GetYaxis().GetTitle() or "y [cm]"
   return evaluate_kde_th2(
     model,
-    n_bins_x=KDE_PLOT_BINS,
-    n_bins_y=KDE_PLOT_BINS,
+    n_bins_x=KDE_OVERLAY_POINTS,
+    n_bins_y=KDE_OVERLAY_POINTS,
     xlo=ref_hist.GetXaxis().GetXmin(),
     xhi=ref_hist.GetXaxis().GetXmax(),
     ylo=ref_hist.GetYaxis().GetXmin(),
@@ -442,8 +542,10 @@ def chi_squared_vs_hist(
   return chi2, n_used
 
 
-def expand_model_range(model: KdeModel, ref_hist: ROOT.TH2) -> None:
-  """Allow PDF evaluation over the displayed histogram axes."""
+def expand_model_range(model: KdeModel | StoredShapeModel, ref_hist: ROOT.TH2) -> None:
+  """Allow live PDF evaluation over the displayed histogram axes."""
+  if not isinstance(model, KdeModel):
+    return
   xlo = min(model.ctx.x_var.getMin(), ref_hist.GetXaxis().GetXmin())
   xhi = max(model.ctx.x_var.getMax(), ref_hist.GetXaxis().GetXmax())
   ylo = min(model.ctx.y_var.getMin(), ref_hist.GetYaxis().GetXmin())
@@ -453,11 +555,15 @@ def expand_model_range(model: KdeModel, ref_hist: ROOT.TH2) -> None:
 
 
 def fill_kde_shape_on_hist_grid(
-  model: KdeModel,
+  model: KdeModel | StoredShapeModel,
   ref_hist: ROOT.TH2,
   name: str,
 ) -> ROOT.TH2D:
-  """Evaluate the live KDE shape at each data-bin center (for chi2 / projections)."""
+  """Evaluate the KDE shape at each data-bin center (for chi2 / projections)."""
+  if isinstance(model, StoredShapeModel) and th2_axes_match(model.shape, ref_hist):
+    out = copy_th2_contents(model.shape, ref_hist, name)
+    out._hold_model = model
+    return out
   out = ref_hist.Clone(name)
   out.SetDirectory(0)
   out.Reset()
@@ -498,7 +604,7 @@ def make_chi2_contrib_th2(
   xtitle = data.GetXaxis().GetTitle() or "x [cm]"
   ytitle = data.GetYaxis().GetTitle() or "y [cm]"
   contrib.SetTitle(
-    f"#chi^{{2}} contribution per bin;{xtitle};{ytitle};#chi^{{2}}_{{i}}"
+    f"{PLOT_TITLE_CHI2};{xtitle};{ytitle};#chi^{{2}}_{{i}}"
   )
   for ix in range(1, data.GetNbinsX() + 1):
     for iy in range(1, data.GetNbinsY() + 1):
@@ -540,7 +646,7 @@ def _axis_linspace(lo: float, hi: float, n_points: int) -> list[float]:
 
 
 def kde_projection_x_curve(
-  model: KdeModel,
+  model: KdeModel | StoredShapeModel,
   ref_hist: ROOT.TH2,
   name: str,
 ) -> ROOT.TGraph:
@@ -559,7 +665,7 @@ def kde_projection_x_curve(
 
 
 def kde_projection_y_curve(
-  model: KdeModel,
+  model: KdeModel | StoredShapeModel,
   ref_hist: ROOT.TH2,
   name: str,
 ) -> ROOT.TGraph:
@@ -575,6 +681,20 @@ def kde_projection_y_curve(
   for i, y in enumerate(y_values):
     graph.SetPoint(i, y, sum(model.scaled_at(x, y) for x in x_centers))
   return graph
+
+
+def _integral_match_scale(data_integral: float, model_integral: float) -> float:
+  """Scale factor so model integral matches data (display α_int / α_WLS)."""
+  if model_integral <= 0:
+    return 1.0
+  return data_integral / model_integral
+
+
+def _scale_graph_y(graph: ROOT.TGraph, scale: float) -> None:
+  if scale == 1.0:
+    return
+  for i in range(graph.GetN()):
+    graph.SetPoint(i, graph.GetPointX(i), graph.GetPointY(i) * scale)
 
 
 def _print_comparison_stats(
@@ -608,7 +728,7 @@ def _print_comparison_stats(
 def evaluate_comparison(
   label: str,
   data: ROOT.TH2,
-  model: KdeModel,
+  model: KdeModel | StoredShapeModel,
 ) -> dict:
   if data.GetSumw2N() == 0:
     data.Sumw2()
@@ -828,27 +948,63 @@ def _draw_unity_line(hist: ROOT.TH1) -> ROOT.TLine:
   return line
 
 
-def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> None:
-  pad.cd()
-  box = ROOT.TPaveText(0.30, 0.16, 0.70, 0.55, "NDC")
-  box.SetName("proj_stats_box")
+def _info_pad_box(x1: float, y1: float, x2: float, y2: float) -> ROOT.TPave:
+  box = ROOT.TPave(x1, y1, x2, y2, 1, "NDC")
   box.SetFillColor(ROOT.kWhite)
   box.SetFillStyle(1001)
   box.SetBorderSize(1)
-  box.SetTextFont(42)
-  box.SetTextSize(0.034)
-  box.SetTextAlign(12)
-  box.AddText("Statistics")
-  box.AddText(
-    f"integral:  {stats.integral_data:.4g}  /  {stats.integral_kde:.4g}"
-  )
-  box.AddText(
-    f"{stats.mean_label}:  {stats.mean_data:.4g}  /  {stats.mean_kde:.4g}"
-  )
-  box.AddText(f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}")
-  box.AddText(f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}")
+  box.SetLineColor(ROOT.kBlack)
+  return box
+
+
+def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> None:
+  pad.cd()
+  box = _info_pad_box(0.28, 0.16, 0.72, 0.55)
+  box.SetName("proj_stats_box")
   box.Draw()
   pad._stats_box = box
+
+  latex = ROOT.TLatex()
+  latex.SetNDC()
+  latex.SetTextFont(42)
+  latex.SetTextSize(0.034)
+
+  x_label = 0.31
+  x_data = 0.46
+  x_kde = 0.60
+  y_header = 0.50
+  y0 = 0.42
+  dy = 0.06
+
+  latex.SetTextAlign(23)
+  latex.DrawLatex(x_data, y_header, "data")
+  latex.DrawLatex(x_kde, y_header, "KDE")
+
+  rows = (
+    ("integral", f"{stats.integral_data:.4g}", f"{stats.integral_kde:.4g}"),
+    (stats.mean_label, f"{stats.mean_data:.5g}", f"{stats.mean_kde:.5g}"),
+  )
+  for i, (label, data_val, kde_val) in enumerate(rows):
+    y = y0 - i * dy
+    latex.SetTextAlign(13)
+    latex.DrawLatex(x_label, y, label)
+    latex.SetTextAlign(23)
+    latex.DrawLatex(x_data, y, data_val)
+    latex.DrawLatex(x_kde, y, kde_val)
+
+  y_chi = y0 - 2.3 * dy
+  latex.SetTextAlign(12)
+  latex.DrawLatex(
+    x_label,
+    y_chi,
+    f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}",
+  )
+  latex.DrawLatex(
+    x_label,
+    y_chi - dy,
+    f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}",
+  )
+  pad._stats_latex = latex
 
 
 def _style_projection_curve(curve: ROOT.TGraph) -> None:
@@ -866,37 +1022,6 @@ def _stats_delta(hist_stats: Th2RegionStats, kde_stats: Th2RegionStats) -> Th2Re
   )
 
 
-def _draw_stats_table(
-  latex: ROOT.TLatex,
-  hist_stats: Th2RegionStats,
-  kde_stats: Th2RegionStats,
-  region_label: str,
-) -> None:
-  delta = _stats_delta(hist_stats, kde_stats)
-  x_label, x_int, x_mx, x_my, x_sx, x_sy = 0.04, 0.18, 0.28, 0.38, 0.48, 0.58
-  y_hist = 0.55
-  latex.SetTextSize(0.13)
-  latex.SetTextAlign(23)
-  latex.DrawLatex(0.32, 0.92, f"Statistics ({region_label})")
-  latex.DrawLatex(x_int, 0.78, "integral")
-  latex.DrawLatex(x_mx, 0.78, "mean x")
-  latex.DrawLatex(x_my, 0.78, "mean y")
-  latex.DrawLatex(x_sx, 0.78, "std x")
-  latex.DrawLatex(x_sy, 0.78, "std y")
-  latex.SetTextAlign(13)
-  latex.DrawLatex(x_label, y_hist, "histogram")
-  latex.DrawLatex(x_label, y_hist - 0.2, "KDE")
-  latex.DrawLatex(x_label, y_hist - 0.4, "difference")
-  latex.SetTextAlign(23)
-  for row, stats in enumerate((hist_stats, kde_stats, delta)):
-    y = y_hist - 0.2 * row
-    latex.DrawLatex(x_int, y, f"{stats.integral:.4g}")
-    latex.DrawLatex(x_mx, y, f"{stats.mean_x:.4g}")
-    latex.DrawLatex(x_my, y, f"{stats.mean_y:.4g}")
-    latex.DrawLatex(x_sx, y, f"{stats.std_x:.4g}")
-    latex.DrawLatex(x_sy, y, f"{stats.std_y:.4g}")
-
-
 def _param_lines(fit: dict, meta: dict[str, float | str | int]) -> list[str]:
   lines = [
     f"#rho = {float(meta.get('rho', float('nan'))):.5g},  #alpha = {fit['alpha']:.5g}",
@@ -911,41 +1036,83 @@ def _param_lines(fit: dict, meta: dict[str, float | str | int]) -> list[str]:
   return lines
 
 
+def _draw_overlay_stats_table(
+  latex: ROOT.TLatex,
+  hist_stats: Th2RegionStats,
+  kde_stats: Th2RegionStats,
+) -> None:
+  delta = _stats_delta(hist_stats, kde_stats)
+  x_label, x_int, x_mx, x_my = 0.10, 0.24, 0.34, 0.44
+  y_header, y_hist = 0.82, 0.58
+  latex.SetTextSize(0.15)
+  latex.SetTextAlign(23)
+  latex.DrawLatex(x_int, y_header, "integral")
+  latex.DrawLatex(x_mx, y_header, "mean x")
+  latex.DrawLatex(x_my, y_header, "mean y")
+  latex.SetTextAlign(13)
+  latex.DrawLatex(x_label, y_hist, "histogram")
+  latex.DrawLatex(x_label, y_hist - 0.2, "KDE")
+  latex.DrawLatex(x_label, y_hist - 0.4, "difference")
+  latex.SetTextAlign(23)
+  for row, stats in enumerate((hist_stats, kde_stats, delta)):
+    y = y_hist - 0.2 * row
+    latex.DrawLatex(x_int, y, f"{stats.integral:.4g}")
+    latex.DrawLatex(x_mx, y, f"{stats.mean_x:.5g}")
+    latex.DrawLatex(x_my, y, f"{stats.mean_y:.5g}")
+
+
+def _draw_overlay_params(latex: ROOT.TLatex, param_lines: list[str]) -> None:
+  y_param = 0.54
+  latex.SetTextAlign(12)
+  latex.SetTextSize(0.15)
+  latex.DrawLatex(0.68, 0.82, "KDE Parameters")
+  for line in param_lines:
+    latex.DrawLatex(0.58, y_param, line)
+    y_param -= 0.20
+
+
 def _draw_stats_and_params(
   pad: ROOT.TPad,
   fit: dict,
   meta: dict[str, float | str | int],
-  region_label: str,
 ) -> None:
   pad.cd()
   pad.SetFillStyle(0)
+
+  stats_box = _info_pad_box(0.07, 0.04, 0.52, 0.94)
+  params_box = _info_pad_box(0.54, 0.04, 0.96, 0.94)
+  stats_box.Draw()
+  params_box.Draw()
+  pad._stats_table_box = stats_box
+  pad._params_box = params_box
+
   latex = ROOT.TLatex()
   latex.SetNDC()
   latex.SetTextFont(42)
-  _draw_stats_table(latex, fit["hist_stats"], fit["kde_stats"], region_label)
-  latex.SetTextAlign(12)
-  latex.SetTextSize(0.13)
-  y_param = 0.78
-  for line in _param_lines(fit, meta):
-    latex.DrawLatex(0.68, y_param, line)
-    y_param -= 0.18
+  _draw_overlay_stats_table(latex, fit["hist_stats"], fit["kde_stats"])
+  _draw_overlay_params(latex, _param_lines(fit, meta))
 
 
 def plot_overlay(
   data: ROOT.TH2,
   fit: dict,
   meta: dict[str, float | str | int],
-  region_label: str,
   outfile: str,
 ) -> None:
-  model: KdeModel = fit["model"]
+  model: KdeModel | StoredShapeModel = fit["model"]
   data_plot = data.Clone("overlay_data")
   data_plot.SetDirectory(0)
   data_plot.SetStats(0)
-  print(
-    f"Evaluating fine KDE surface ({KDE_PLOT_BINS}x{KDE_PLOT_BINS}) "
-    "via RooNDKeysPdf..."
-  )
+  if isinstance(model, StoredShapeModel):
+    print(
+      f"Evaluating fine KDE surface ({KDE_OVERLAY_POINTS}x{KDE_OVERLAY_POINTS}) "
+      "via stored kde_template..."
+    )
+  else:
+    print(
+      f"Evaluating fine KDE surface ({KDE_OVERLAY_POINTS}x{KDE_OVERLAY_POINTS}) "
+      "via RooNDKeysPdf..."
+    )
   kde_surf = kde_fine_plot_hist(model, data, "overlay_kde_surf")
   kde_only = kde_surf.Clone("overlay_kde_only")
   kde_only.SetDirectory(0)
@@ -961,11 +1128,11 @@ def plot_overlay(
 
   pad_left.cd()
   _configure_surf_pad(pad_left)
-  data_plot.SetTitle("Data with #alpha#timesKDE(x,y)")
+  data_plot.SetTitle(PLOT_TITLE_OVERLAY)
   axis_titles = _style_surf_hist(data_plot, line_color=ROOT.kBlue + 1)
   kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=1)
   data_plot.Draw("LEGO")
-  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.1)
+  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.2)
   kde_surf.Draw("SURF SAME")
   _draw_surf3d_axis_titles(*axis_titles)
 
@@ -979,12 +1146,12 @@ def plot_overlay(
 
   pad_right.cd()
   _configure_surf_pad(pad_right)
-  kde_only.SetTitle("#alpha#timesKDE(x,y)")
+  kde_only.SetTitle(PLOT_TITLE_KDE_TEMPLATE)
   _style_surf_hist(kde_only, line_color=ROOT.kBlue + 1)
   kde_only.Draw("SURF")
   _draw_surf3d_axis_titles(*kde_axes)
 
-  _draw_stats_and_params(pad_info, fit, meta, region_label)
+  _draw_stats_and_params(pad_info, fit, meta)
   canvas._keepalive = [data_plot, kde_surf, kde_only, leg]
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -1100,6 +1267,18 @@ def plot_projections(data: ROOT.TH2, fit: dict, outfile: str) -> None:
   hy_kde = fit["proj_y_model"]
   gx = fit["curve_x"]
   gy = fit["curve_y"]
+  # Display: rescale WLS-α model to integral-matched α (height matches data).
+  scale = _integral_match_scale(
+    fit["hist_stats"].integral, fit["kde_stats"].integral
+  )
+  hx_kde.Scale(scale)
+  hy_kde.Scale(scale)
+  _scale_graph_y(gx, scale)
+  _scale_graph_y(gy, scale)
+  print(
+    f"Projection display: integral-match scale={scale:.6g} "
+    f"(α_int / α_WLS; overlay/2D χ² still use WLS α)"
+  )
   xtitle, ytitle, ztitle = _axis_titles(data)
   hx_data.GetXaxis().SetTitle(xtitle)
   hy_data.GetXaxis().SetTitle(ytitle)
@@ -1114,10 +1293,10 @@ def plot_projections(data: ROOT.TH2, fit: dict, outfile: str) -> None:
   pad_x = canvas.GetPad(1)
   pad_y = canvas.GetPad(2)
   _draw_projection_column(
-    pad_x, hx_data, gx, hx_kde, "2D KDE X projection", x_stats, f"{data.GetName()}_px"
+    pad_x, hx_data, gx, hx_kde, PLOT_TITLE_X_PROJ, x_stats, f"{data.GetName()}_px"
   )
   _draw_projection_column(
-    pad_y, hy_data, gy, hy_kde, "2D KDE Y projection", y_stats, f"{data.GetName()}_py"
+    pad_y, hy_data, gy, hy_kde, PLOT_TITLE_Y_PROJ, y_stats, f"{data.GetName()}_py"
   )
   canvas._projection_data = (hx_data, hy_data, gx, gy, hx_kde, hy_kde)
   canvas.Update()
@@ -1200,22 +1379,39 @@ def prepare_histogram(hist: ROOT.TH2) -> ROOT.TH2:
   return hist
 
 
-def main() -> int:
-  data = prepare_histogram(open_histogram2d(HIST_ROOT_FILE, HIST_NAME))
-  print(f"Loading KDE fit from {KDE_ROOT_FILE}")
-  train_target, meta = load_kde_fit(KDE_ROOT_FILE)
+def build_compare_model(
+  train_target: ROOT.TH2,
+  meta: dict[str, float | str | int],
+  kde_template: ROOT.TH2,
+) -> KdeModel | StoredShapeModel:
+  """Live PDF for plain fits; stored template when shift/combine ops are present."""
+  if fit_has_spatial_ops(meta):
+    # shift_kde bake-in: per-leg alphas live in kde_template; overall scale is
+    # re-profiled against the comparison hist. Do not rebuild from target_hist.
+    print(
+      "fit_meta has shift/combine keys: using stored kde_template "
+      f"({kde_template.GetNbinsX()}x{kde_template.GetNbinsY()})"
+    )
+    return StoredShapeModel(shape=kde_template, alpha=1.0)
   print(
     f"Rebuilding RooNDKeysPdf from training hist "
     f"{train_target.GetNbinsX()}x{train_target.GetNbinsY()} "
     f"(rho={meta.get('rho')}, linear_combo={bool(meta.get('linear_combo', 0))})"
   )
-  model = build_kde_model(train_target, meta)
+  return build_kde_model(train_target, meta)
+
+
+def main() -> int:
+  data = prepare_histogram(open_histogram2d(HIST_ROOT_FILE, HIST_NAME))
+  print(f"Loading KDE fit from {KDE_ROOT_FILE}")
+  train_target, meta, _kde_shape, kde_template = load_kde_fit(KDE_ROOT_FILE)
+  model = build_compare_model(train_target, meta, kde_template)
   fit = evaluate_comparison("compare", data, model)
 
   os.makedirs(OUTPUT_DIR, exist_ok=True)
   overlay_path, proj_path, chi2_path = output_paths(data)
   label = region_label(data)
-  plot_overlay(data, fit, meta, label, overlay_path)
+  plot_overlay(data, fit, meta, overlay_path)
   plot_projections(data, fit, proj_path)
   plot_chi2_contrib_lego(data, fit, label, chi2_path)
   return 0

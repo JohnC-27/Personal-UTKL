@@ -12,7 +12,7 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # ===============================SCRIPT PARAMS===============================
-FIT_FILE_NAME = "jan2026studies_nominal_corrected_2d_kde"  # .root ADDED BELOW
+FIT_FILE_NAME = "nX_100um_mm1_2d_kde" # .root added below 
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
@@ -21,12 +21,21 @@ OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_overlay.pdf")
 OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections.pdf")
 OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio.pdf")
 
+# Plot titles (projections / ratio append suffixes below)
+PLOT_TITLE = "-100um x shift MM1"
+PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"  #removed "overlay until alpha bug is fixed"
+PLOT_TITLE_KDE_TEMPLATE = "KDE"
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} x projection"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE} y projection"
+PLOT_TITLE_RATIO = f"{PLOT_TITLE} ratio plot"
+
+# plot adjustments, almost never change
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
 
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.
 # kde eval and point plotting scales as this squared
-KDE_PLOT_BINS = 100
+KDE_OVERLAY_POINTS = 200 # PER AXIS -> 100 by 100 = 10,000 points over the plane
 
 # 1D projection curves: direct PDF marginalization at many x/y sample points.
 # kde eval and point plotting scales as this * x/y bin
@@ -309,8 +318,8 @@ def kde_plot_hist(model: KdeModel, name: str) -> ROOT.TH2D:
   yhi = model.ctx.y_var.getMax()
   return evaluate_kde_th2(
     model,
-    n_bins_x=KDE_PLOT_BINS,
-    n_bins_y=KDE_PLOT_BINS,
+    n_bins_x=KDE_OVERLAY_POINTS,
+    n_bins_y=KDE_OVERLAY_POINTS,
     xlo=xlo,
     xhi=xhi,
     ylo=ylo,
@@ -397,6 +406,20 @@ def _graph_max_y(graph: ROOT.TGraph) -> float:
   for i in range(graph.GetN()):
     ymax = max(ymax, graph.GetPointY(i))
   return ymax
+
+
+def _integral_match_scale(data_integral: float, model_integral: float) -> float:
+  """Scale factor so model integral matches data (display α_int / α_WLS)."""
+  if model_integral <= 0:
+    return 1.0
+  return data_integral / model_integral
+
+
+def _scale_graph_y(graph: ROOT.TGraph, scale: float) -> None:
+  if scale == 1.0:
+    return
+  for i in range(graph.GetN()):
+    graph.SetPoint(i, graph.GetPointX(i), graph.GetPointY(i) * scale)
 
 
 def _th2_axis_projection(hist2: ROOT.TH2, axis: str, name: str) -> ROOT.TH1:
@@ -546,7 +569,7 @@ def plot_ratio(
 
   xtitle = target.GetXaxis().GetTitle() or "x [cm]"
   ytitle = target.GetYaxis().GetTitle() or "y [cm]"
-  ratio.SetTitle("KDE / Data;{};{};KDE / Data".format(xtitle, ytitle))
+  ratio.SetTitle("{};{};{};KDE / Data".format(PLOT_TITLE_RATIO, xtitle, ytitle))
   ratio.GetZaxis().SetRangeUser(zmin, zmax)
   ratio.GetZaxis().SetTitle("KDE / Data")
   ratio.GetZaxis().SetTitleOffset(1.5)
@@ -588,6 +611,15 @@ def plot_ratio(
   print(f"Saved {outfile}")
 
 
+def _info_pad_box(x1: float, y1: float, x2: float, y2: float) -> ROOT.TPave:
+  box = ROOT.TPave(x1, y1, x2, y2, 1, "NDC")
+  box.SetFillColor(ROOT.kWhite)
+  box.SetFillStyle(1001)
+  box.SetBorderSize(1)
+  box.SetLineColor(ROOT.kBlack)
+  return box
+
+
 def _draw_stats_and_params(
   pad: ROOT.TPad,
   target: ROOT.TH2,
@@ -611,6 +643,23 @@ def _draw_stats_and_params(
   ndf = float(meta["ndf"])
   rchi2 = float(meta.get("reduced_chi2", chi2 / max(ndf, 1)))
 
+  param_lines = [
+    f"h_{{x}} = {bw_x:.5g},  h_{{y}} = {bw_y:.5g},  #alpha = {alpha:.5g}",
+    f"#chi^{{2}} = {chi2:.4g},  #chi^{{2}}/ndf = {rchi2:.4g},  ndf = {ndf:.0f}",
+  ]
+  if meta.get("linear_combo", 0):
+    mix = float(meta["mix"])
+    param_lines.append(
+      f"mix = {mix:.4g} (unmirrored),  {1.0 - mix:.4g} (mirrored)"
+    )
+
+  stats_box = _info_pad_box(0.07, 0.04, 0.52, 0.94)
+  params_box = _info_pad_box(0.54, 0.04, 0.96, 0.94)
+  stats_box.Draw()
+  params_box.Draw()
+  pad._stats_table_box = stats_box
+  pad._params_box = params_box
+
   latex = ROOT.TLatex()
   latex.SetNDC()
   latex.SetTextFont(42)
@@ -620,12 +669,10 @@ def _draw_stats_and_params(
   x_int = 0.24
   x_mx = 0.34
   x_my = 0.44
-  y_title = 0.95
-  y_header = 0.8
-  y_hist = 0.55
+  y_header = 0.82
+  y_hist = 0.58
 
   latex.SetTextAlign(23)
-  latex.DrawLatex(0.28, y_title, "Statistics")
   latex.DrawLatex(x_int, y_header, "integral")
   latex.DrawLatex(x_mx, y_header, "mean x")
   latex.DrawLatex(x_my, y_header, "mean y")
@@ -639,22 +686,13 @@ def _draw_stats_and_params(
   for row, stats in enumerate((hist_stats, kde_stats, delta)):
     y = y_hist - 0.2 * row
     latex.DrawLatex(x_int, y, f"{stats.integral:.4g}")
-    latex.DrawLatex(x_mx, y, f"{stats.mean_x:.4g}")
-    latex.DrawLatex(x_my, y, f"{stats.mean_y:.4g}")
+    latex.DrawLatex(x_mx, y, f"{stats.mean_x:.5g}")
+    latex.DrawLatex(x_my, y, f"{stats.mean_y:.5g}")
 
-  param_lines = [
-    f"h_{{x}} = {bw_x:.5g},  h_{{y}} = {bw_y:.5g},  #alpha = {alpha:.5g}",
-    f"#chi^{{2}} = {chi2:.4g},  #chi^{{2}}/ndf = {rchi2:.4g},  ndf = {ndf:.0f}",
-  ]
-  if meta.get("linear_combo", 0):
-    mix = float(meta["mix"])
-    param_lines.append(
-      f"mix = {mix:.4g} (unmirrored),  {1.0 - mix:.4g} (mirrored)"
-    )
-
-  y_param = 0.78
+  y_param = 0.54
   latex.SetTextAlign(12)
   latex.SetTextSize(0.15)
+  latex.DrawLatex(0.68, 0.82, "KDE Parameters")
   for line in param_lines:
     latex.DrawLatex(0.58, y_param, line)
     y_param -= 0.20
@@ -687,11 +725,11 @@ def plot_overlay(
 
   pad_left.cd()
   _configure_surf_canvas(pad_left)
-  data.SetTitle("Weighted, adaptive, mirrored/unmirrored KDE")
+  data.SetTitle(PLOT_TITLE_OVERLAY)
   axis_titles = _style_surf_hist(data, line_color=ROOT.kBlue + 1)
   kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=1)
   data.Draw("LEGO")
-  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.1)
+  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.2)
   kde_surf.Draw("SURF SAME")
   _draw_surf3d_axis_titles(*axis_titles)
 
@@ -699,13 +737,13 @@ def plot_overlay(
   leg.SetBorderSize(0)
   leg.SetFillStyle(0)
   leg.SetTextSize(0.04)
-  leg.AddEntry(data, "Data", "l").SetLineWidth(1)
-  leg.AddEntry(kde_surf, "#alpha#timesKDE(x,y)", "l").SetLineWidth(1)
+  leg.AddEntry(data, "Data", "l").SetLineWidth(2)
+  leg.AddEntry(kde_surf, "#alpha#timesKDE(x,y)", "l").SetLineWidth(2)
   leg.Draw()
 
   pad_right.cd()
   _configure_surf_canvas(pad_right)
-  kde_only_surf.SetTitle("#alpha#timesKDE(x,y)")
+  kde_only_surf.SetTitle(PLOT_TITLE_KDE_TEMPLATE)
   _style_surf_hist(kde_only_surf, line_color=ROOT.kBlue + 1)
   kde_only_surf.Draw("SURF")
   _draw_surf3d_axis_titles(*kde_axes)
@@ -852,25 +890,52 @@ def _draw_unity_line(hist: ROOT.TH1) -> ROOT.TLine:
 
 def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> None:
   pad.cd()
-  box = ROOT.TPaveText(0.30, 0.16, 0.70, 0.55, "NDC")
+  box = _info_pad_box(0.28, 0.16, 0.72, 0.55)
   box.SetName("proj_stats_box")
-  box.SetFillColor(ROOT.kWhite)
-  box.SetFillStyle(1001)
-  box.SetBorderSize(1)
-  box.SetTextFont(42)
-  box.SetTextSize(0.034)
-  box.SetTextAlign(12)
-  box.AddText("Statistics")
-  box.AddText(
-    f"integral:  {stats.integral_data:.4g}  /  {stats.integral_kde:.4g}"
-  )
-  box.AddText(
-    f"{stats.mean_label}:  {stats.mean_data:.4g}  /  {stats.mean_kde:.4g}"
-  )
-  box.AddText(f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}")
-  box.AddText(f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}")
   box.Draw()
   pad._stats_box = box
+
+  latex = ROOT.TLatex()
+  latex.SetNDC()
+  latex.SetTextFont(42)
+  latex.SetTextSize(0.034)
+
+  x_label = 0.31
+  x_data = 0.46
+  x_kde = 0.60
+  y_header = 0.50
+  y0 = 0.42
+  dy = 0.06
+
+  latex.SetTextAlign(23)
+  latex.DrawLatex(x_data, y_header, "data")
+  latex.DrawLatex(x_kde, y_header, "KDE")
+
+  rows = (
+    ("integral", f"{stats.integral_data:.4g}", f"{stats.integral_kde:.4g}"),
+    (stats.mean_label, f"{stats.mean_data:.5g}", f"{stats.mean_kde:.5g}"),
+  )
+  for i, (label, data_val, kde_val) in enumerate(rows):
+    y = y0 - i * dy
+    latex.SetTextAlign(13)
+    latex.DrawLatex(x_label, y, label)
+    latex.SetTextAlign(23)
+    latex.DrawLatex(x_data, y, data_val)
+    latex.DrawLatex(x_kde, y, kde_val)
+
+  y_chi = y0 - 2.3 * dy
+  latex.SetTextAlign(12)
+  latex.DrawLatex(
+    x_label,
+    y_chi,
+    f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}",
+  )
+  latex.DrawLatex(
+    x_label,
+    y_chi - dy,
+    f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}",
+  )
+  pad._stats_latex = latex
 
 
 def _draw_projection_column(
@@ -941,7 +1006,7 @@ def _draw_projection_column(
   leg.SetFillStyle(0)
   leg.SetTextSize(0.035)
   leg.AddEntry(data, "Data", "lep")
-  leg.AddEntry(model_curve, "#alpha#timesKDE", "l")
+  leg.AddEntry(model_curve, "#alpha_{int}#timesKDE", "l")
   leg.Draw()
   pad_main._legend = leg
 
@@ -972,17 +1037,15 @@ def _draw_projection_column(
   parent_pad._projection_model_bins = model_bins
 
 
-def plot_projections(
+def _build_scaled_projections(
   target: ROOT.TH2,
   kde_model: KdeModel,
   kde_on_data: ROOT.TH2,
-  outfile: str,
-) -> None:
+) -> tuple[ROOT.TH1, ROOT.TH1, ROOT.TGraph, ROOT.TGraph, ROOT.TH1, ROOT.TH1]:
+  """Data + KDE projections; KDE rescaled to integral-matched α for display."""
   if target.GetSumw2N() == 0:
     target.Sumw2()
-
   proj_opt = "e"
-  # Sum only in-range bins; (0, -1) includes underflow/overflow on the summed axis.
   hx_data = target.ProjectionX(
     f"{target.GetName()}_px_data", 1, target.GetNbinsY(), proj_opt
   )
@@ -991,21 +1054,37 @@ def plot_projections(
   )
   gx_kde = kde_projection_x_curve(kde_model, target, f"{target.GetName()}_px_kde")
   gy_kde = kde_projection_y_curve(kde_model, target, f"{target.GetName()}_py_kde")
-  hx_kde_bins = _th2_axis_projection(
-    kde_on_data, "x", f"{target.GetName()}_px_kde_bins"
+  hx_kde = _th2_axis_projection(kde_on_data, "x", f"{target.GetName()}_px_kde_bins")
+  hy_kde = _th2_axis_projection(kde_on_data, "y", f"{target.GetName()}_py_kde_bins")
+  scale = _integral_match_scale(target.Integral(), kde_on_data.Integral())
+  hx_kde.Scale(scale)
+  hy_kde.Scale(scale)
+  _scale_graph_y(gx_kde, scale)
+  _scale_graph_y(gy_kde, scale)
+  print(
+    f"Projection display: integral-match scale={scale:.6g} "
+    f"(α_int / α_WLS; overlay still uses WLS α)"
   )
-  hy_kde_bins = _th2_axis_projection(
-    kde_on_data, "y", f"{target.GetName()}_py_kde_bins"
-  )
-  x_stats = _projection_stats(hx_data, hx_kde_bins, "mean x")
-  y_stats = _projection_stats(hy_data, hy_kde_bins, "mean y")
-
   for h in (hx_data, hy_data):
     h.SetDirectory(0)
   if hx_data.GetSumw2N() == 0:
     hx_data.Sumw2()
   if hy_data.GetSumw2N() == 0:
     hy_data.Sumw2()
+  return hx_data, hy_data, gx_kde, gy_kde, hx_kde, hy_kde
+
+
+def plot_projections(
+  target: ROOT.TH2,
+  kde_model: KdeModel,
+  kde_on_data: ROOT.TH2,
+  outfile: str,
+) -> None:
+  hx_data, hy_data, gx_kde, gy_kde, hx_kde_bins, hy_kde_bins = (
+    _build_scaled_projections(target, kde_model, kde_on_data)
+  )
+  x_stats = _projection_stats(hx_data, hx_kde_bins, "mean x")
+  y_stats = _projection_stats(hy_data, hy_kde_bins, "mean y")
 
   xtitle = target.GetXaxis().GetTitle() or "x [cm]"
   ytitle = target.GetYaxis().GetTitle() or "y [cm]"
@@ -1017,42 +1096,20 @@ def plot_projections(
 
   canvas = ROOT.TCanvas("c_proj", "2D KDE projections", 2800, 1240)
   canvas.Divide(2, 1)
-
-  canvas.cd(1)
-  pad_x = canvas.GetPad(1)
+  pad_x, pad_y = canvas.GetPad(1), canvas.GetPad(2)
   pad_x.cd()
   _draw_projection_column(
-    pad_x,
-    hx_data,
-    gx_kde,
-    hx_kde_bins,
-    "2D KDE X projection",
-    x_stats,
+    pad_x, hx_data, gx_kde, hx_kde_bins, PLOT_TITLE_X_PROJ, x_stats,
     f"{target.GetName()}_px",
   )
-
-  canvas.cd(2)
-  pad_y = canvas.GetPad(2)
   pad_y.cd()
   _draw_projection_column(
-    pad_y,
-    hy_data,
-    gy_kde,
-    hy_kde_bins,
-    "2D KDE Y projection",
-    y_stats,
+    pad_y, hy_data, gy_kde, hy_kde_bins, PLOT_TITLE_Y_PROJ, y_stats,
     f"{target.GetName()}_py",
   )
-
   canvas._projection_data = (
-    hx_data,
-    hy_data,
-    gx_kde,
-    gy_kde,
-    hx_kde_bins,
-    hy_kde_bins,
+    hx_data, hy_data, gx_kde, gy_kde, hx_kde_bins, hy_kde_bins,
   )
-
   canvas.Update()
   canvas.SaveAs(outfile)
   print(f"Saved {outfile}")

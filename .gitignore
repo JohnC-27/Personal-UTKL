@@ -7,4 +7,5 @@ __pychache__/
 ai/
 .ai/
 .DS_Store
+beam_profile_modeling/root_files
 goals.md
