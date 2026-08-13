@@ -9,9 +9,10 @@ Plain fit products: rebuild RooNDKeysPdf from target_hist + fit_meta. Overlay
 SURF and projection curves evaluate the PDF on a fine grid (KDE_OVERLAY_POINTS /
 KDE_PROJECTION_POINTS). Chi2 uses PDF values at data-bin centers.
 
-Shifted / combined products (shift_kde.py): target_hist is not the model.
-Use stored kde_template (bin copy or Interpolate) so means/χ² match
-shift_kde; live rebuild would ignore shift_*/combine_*.
+Shifted / combined products (shift_kde.py): target_hist is not the model for
+combine (and may have translated axes after a pure shift). Use stored
+kde_template via nearest-bin lookup so means/χ² match the baked product;
+live rebuild from a single target_hist cannot apply combine coeffs.
 
 Outputs (plot_2d_kde.py style):
   - overlay: data + alpha*KDE surface, KDE alone, region stats (WLS alpha)
@@ -33,13 +34,13 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # ===============================SCRIPT PARAMS===============================
 # target hist file and hist name
 HIST_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "ml_beamshift_nX_100um_100bin_corrected.root"
+  os.path.dirname(__file__), "..", "root_files", "ml_nominal_100bin_corrected.root"
 )
 HIST_NAME = "ShiftxyposMM1"
 
 
 KDE_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "ml_nominal_mm1_2d_kde_plus_pX_100um_mm1_2d_kde_sA(-0.0912,0)_sB(0.06108,0)_c(0.5,0.5).root"
+  os.path.dirname(__file__), "..", "root_files", "pX_100um_mm1_2d_kde_shifted_(0.154976,0).root"
 )
 
 # Rebin option here for hists >100 bins each axis or so
@@ -51,14 +52,14 @@ REBIN_FACTOR_Y = 1
 # Restriction for getting the "good area" of the KDE (roughly the middle 80% of each axis)
 # After rebinning, keep a centered Nx x Ny window for plot + stats (None = all).
 # int = bins to keep on that axis after rebin (centered crop so oringinal nbins must be even)
-RESTRICT_NBINS_X = 60
-RESTRICT_NBINS_Y = 60
+RESTRICT_NBINS_X = 72
+RESTRICT_NBINS_Y = 72
 
 OUTPUT_TAG = "2d_kde_vs"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 # Plot titles (projections / chi2 append suffixes below)
-PLOT_TITLE = "Combined -100 and +100um shifts vs nominal hist"
+PLOT_TITLE = "+100um beamshift KDE vs nominal hist"
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
 PLOT_TITLE_KDE_TEMPLATE = "KDE"
 PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} x projection"
@@ -67,7 +68,9 @@ PLOT_TITLE_CHI2 = f"{PLOT_TITLE} #chi^{{2}} contribution"
 
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.
 # kde eval and point plotting scales as this squared
-KDE_OVERLAY_POINTS = 200 # PER AXIS -> 100 by 100 = 10,000 points over the plane
+# 100 is best for 3D mesh visualization. 200 is too many lines to show shape
+KDE_OVERLAY_POINTS = 100 # PER AXIS -> 100 by 100 = 10,000 points over the plane
+
 # Continuous projection curves: PDF marginalization sample count per axis.
 KDE_PROJECTION_POINTS = 200
 
@@ -142,6 +145,7 @@ class StoredShapeModel:
   alpha: float = 1.0
 
   def shape_at(self, x: float, y: float) -> float:
+    """Nearest-bin value; no TH2::Interpolate."""
     xaxis = self.shape.GetXaxis()
     yaxis = self.shape.GetYaxis()
     if not (xaxis.GetXmin() <= x <= xaxis.GetXmax()):
@@ -150,14 +154,11 @@ class StoredShapeModel:
       return 0.0
     ix = xaxis.FindFixBin(x)
     iy = yaxis.FindFixBin(y)
-    nbx = self.shape.GetNbinsX()
-    nby = self.shape.GetNbinsY()
-    if ix < 1 or ix > nbx or iy < 1 or iy > nby:
+    if ix < 1 or ix > self.shape.GetNbinsX():
       return 0.0
-    # ROOT Interpolate is undefined near the outer bin rim; use bin content there.
-    if ix == 1 or ix == nbx or iy == 1 or iy == nby:
-      return float(self.shape.GetBinContent(ix, iy))
-    return float(self.shape.Interpolate(x, y))
+    if iy < 1 or iy > self.shape.GetNbinsY():
+      return 0.0
+    return float(self.shape.GetBinContent(ix, iy))
 
   def scaled_at(self, x: float, y: float) -> float:
     return self.alpha * self.shape_at(x, y)
@@ -683,6 +684,58 @@ def kde_projection_y_curve(
   return graph
 
 
+def _weighted_mean_std_from_th2(hist: ROOT.TH2) -> tuple[float, float, float, float, float]:
+  total_w = 0.0
+  sum_x = 0.0
+  sum_y = 0.0
+  for ix in range(1, hist.GetNbinsX() + 1):
+    x = hist.GetXaxis().GetBinCenter(ix)
+    for iy in range(1, hist.GetNbinsY() + 1):
+      w = hist.GetBinContent(ix, iy)
+      if w <= 0:
+        continue
+      y = hist.GetYaxis().GetBinCenter(iy)
+      total_w += w
+      sum_x += w * x
+      sum_y += w * y
+
+  if total_w <= 0:
+    return 0.0, 0.0, 0.0, 0.0, 0.0
+
+  mean_x = sum_x / total_w
+  mean_y = sum_y / total_w
+
+  var_x = 0.0
+  var_y = 0.0
+  for ix in range(1, hist.GetNbinsX() + 1):
+    x = hist.GetXaxis().GetBinCenter(ix)
+    dx2 = (x - mean_x) * (x - mean_x)
+    for iy in range(1, hist.GetNbinsY() + 1):
+      w = hist.GetBinContent(ix, iy)
+      if w <= 0:
+        continue
+      y = hist.GetYaxis().GetBinCenter(iy)
+      dy2 = (y - mean_y) * (y - mean_y)
+      var_x += w * dx2
+      var_y += w * dy2
+
+  std_x = (var_x / total_w) ** 0.5
+  std_y = (var_y / total_w) ** 0.5
+  return total_w, mean_x, mean_y, std_x, std_y
+
+def ndkeys_bandwidths(target: ROOT.TH2, rho: float) -> tuple[float, float]:
+  """Return effective RooNDKeys bandwidths (rho * h0) in x and y."""
+  n_eff, _mx, _my, sigma_x, sigma_y = _weighted_mean_std_from_th2(target)
+  if n_eff <= 0:
+    return 0.0, 0.0
+
+  d = 2.0
+  silverman = (4.0 / (d + 2.0)) ** (1.0 / (d + 4.0))
+  n_factor = n_eff ** (-1.0 / (d + 4.0))
+  h0_x = silverman * sigma_x * n_factor
+  h0_y = silverman * sigma_y * n_factor
+  return rho * h0_x, rho * h0_y
+
 def _integral_match_scale(data_integral: float, model_integral: float) -> float:
   """Scale factor so model integral matches data (display α_int / α_WLS)."""
   if model_integral <= 0:
@@ -912,26 +965,49 @@ def _make_chi2_contrib_hist(data: ROOT.TH1, model: ROOT.TH1, name: str) -> ROOT.
   return contrib
 
 
-def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.08) -> None:
+def _ratio_y_limits(*ratios: ROOT.TH1, pad_frac: float = 0.08) -> tuple[float, float]:
   ymax = 1.0
   ymin = 1.0
-  for i in range(1, ratio.GetNbinsX() + 1):
-    val = ratio.GetBinContent(i)
-    err = ratio.GetBinError(i)
-    if err <= 0 and val == 0:
-      continue
-    ymax = max(ymax, val + err)
-    ymin = min(ymin, val - err)
+  for ratio in ratios:
+    for i in range(1, ratio.GetNbinsX() + 1):
+      val = ratio.GetBinContent(i)
+      err = ratio.GetBinError(i)
+      if err <= 0 and val == 0:
+        continue
+      ymax = max(ymax, val + err)
+      ymin = min(ymin, val - err)
   span = max(ymax - ymin, 0.2)
   margin = pad_frac * span
-  ratio.GetYaxis().SetRangeUser(ymin - margin, ymax + margin)
+  return ymin - margin, ymax + margin
+
+
+def _chi2_y_limits(*chi2_hists: ROOT.TH1, pad_frac: float = 0.12) -> tuple[float, float]:
+  ymax = max((h.GetMaximum() for h in chi2_hists), default=0.0)
+  if ymax <= 0:
+    ymax = 1.0
+  return 0.0, ymax * (1.0 + pad_frac)
+
+
+def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.08) -> None:
+  ratio.GetYaxis().SetRangeUser(*_ratio_y_limits(ratio, pad_frac=pad_frac))
 
 
 def _chi2_y_range(chi2_hist: ROOT.TH1, pad_frac: float = 0.12) -> None:
-  ymax = chi2_hist.GetMaximum()
-  if ymax <= 0:
-    ymax = 1.0
-  chi2_hist.GetYaxis().SetRangeUser(0.0, ymax * (1.0 + pad_frac))
+  chi2_hist.GetYaxis().SetRangeUser(*_chi2_y_limits(chi2_hist, pad_frac=pad_frac))
+
+
+def _apply_shared_projection_scales(pad_x: ROOT.TPad, pad_y: ROOT.TPad) -> None:
+  """Match x/y projection ratio and chi2 contribution y-axis ranges."""
+  rx = pad_x._projection_ratio
+  ry = pad_y._projection_ratio
+  cx = pad_x._projection_chi2
+  cy = pad_y._projection_chi2
+  rymin, rymax = _ratio_y_limits(rx, ry)
+  rx.GetYaxis().SetRangeUser(rymin, rymax)
+  ry.GetYaxis().SetRangeUser(rymin, rymax)
+  cymin, cymax = _chi2_y_limits(cx, cy)
+  cx.GetYaxis().SetRangeUser(cymin, cymax)
+  cy.GetYaxis().SetRangeUser(cymin, cymax)
 
 
 def _draw_unity_line(hist: ROOT.TH1) -> ROOT.TLine:
@@ -1022,9 +1098,15 @@ def _stats_delta(hist_stats: Th2RegionStats, kde_stats: Th2RegionStats) -> Th2Re
   )
 
 
-def _param_lines(fit: dict, meta: dict[str, float | str | int]) -> list[str]:
+def _param_lines(
+  fit: dict,
+  meta: dict[str, float | str | int],
+  target: ROOT.TH2,
+) -> list[str]:
+  rho = float(meta["rho"])
+  bw_x, bw_y = ndkeys_bandwidths(target, rho)
   lines = [
-    f"#rho = {float(meta.get('rho', float('nan'))):.5g},  #alpha = {fit['alpha']:.5g}",
+    f"h_{{x}} = {bw_x:.5g},  h_{{y}} = {bw_y:.5g},  #alpha = {fit['alpha']:.5g}",
     (
       f"#chi^{{2}} = {fit['chi2']:.4g},  #chi^{{2}}/ndf = {fit['reduced_chi2']:.4g},  "
       f"ndf = {fit['ndf']:.0f}"
@@ -1075,6 +1157,7 @@ def _draw_stats_and_params(
   pad: ROOT.TPad,
   fit: dict,
   meta: dict[str, float | str | int],
+  target: ROOT.TH2,
 ) -> None:
   pad.cd()
   pad.SetFillStyle(0)
@@ -1090,13 +1173,14 @@ def _draw_stats_and_params(
   latex.SetNDC()
   latex.SetTextFont(42)
   _draw_overlay_stats_table(latex, fit["hist_stats"], fit["kde_stats"])
-  _draw_overlay_params(latex, _param_lines(fit, meta))
+  _draw_overlay_params(latex, _param_lines(fit, meta, target))
 
 
 def plot_overlay(
   data: ROOT.TH2,
   fit: dict,
   meta: dict[str, float | str | int],
+  target: ROOT.TH2,
   outfile: str,
 ) -> None:
   model: KdeModel | StoredShapeModel = fit["model"]
@@ -1151,7 +1235,7 @@ def plot_overlay(
   kde_only.Draw("SURF")
   _draw_surf3d_axis_titles(*kde_axes)
 
-  _draw_stats_and_params(pad_info, fit, meta)
+  _draw_stats_and_params(pad_info, fit, meta, target)
   canvas._keepalive = [data_plot, kde_surf, kde_only, leg]
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -1298,6 +1382,7 @@ def plot_projections(data: ROOT.TH2, fit: dict, outfile: str) -> None:
   _draw_projection_column(
     pad_y, hy_data, gy, hy_kde, PLOT_TITLE_Y_PROJ, y_stats, f"{data.GetName()}_py"
   )
+  _apply_shared_projection_scales(pad_x, pad_y)
   canvas._projection_data = (hx_data, hy_data, gx, gy, hx_kde, hy_kde)
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -1411,7 +1496,7 @@ def main() -> int:
   os.makedirs(OUTPUT_DIR, exist_ok=True)
   overlay_path, proj_path, chi2_path = output_paths(data)
   label = region_label(data)
-  plot_overlay(data, fit, meta, overlay_path)
+  plot_overlay(data, fit, meta, train_target, overlay_path)
   plot_projections(data, fit, proj_path)
   plot_chi2_contrib_lego(data, fit, label, chi2_path)
   return 0

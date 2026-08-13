@@ -35,7 +35,8 @@ RATIO_Z_MIN_HALF_WIDTH = 0.05
 
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.
 # kde eval and point plotting scales as this squared
-KDE_OVERLAY_POINTS = 200 # PER AXIS -> 100 by 100 = 10,000 points over the plane
+# 100 is best for 3D mesh visualization. 200 is too many lines to show shape
+KDE_OVERLAY_POINTS = 100 # PER AXIS -> 100 by 100 = 10,000 points over the plane
 
 # 1D projection curves: direct PDF marginalization at many x/y sample points.
 # kde eval and point plotting scales as this * x/y bin
@@ -852,26 +853,49 @@ def _projection_stats(
   )
 
 
-def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.08) -> None:
+def _ratio_y_limits(*ratios: ROOT.TH1, pad_frac: float = 0.08) -> tuple[float, float]:
   ymax = 1.0
   ymin = 1.0
-  for i in range(1, ratio.GetNbinsX() + 1):
-    val = ratio.GetBinContent(i)
-    err = ratio.GetBinError(i)
-    if err <= 0 and val == 0:
-      continue
-    ymax = max(ymax, val + err)
-    ymin = min(ymin, val - err)
+  for ratio in ratios:
+    for i in range(1, ratio.GetNbinsX() + 1):
+      val = ratio.GetBinContent(i)
+      err = ratio.GetBinError(i)
+      if err <= 0 and val == 0:
+        continue
+      ymax = max(ymax, val + err)
+      ymin = min(ymin, val - err)
   span = max(ymax - ymin, 0.2)
   margin = pad_frac * span
-  ratio.GetYaxis().SetRangeUser(ymin - margin, ymax + margin)
+  return ymin - margin, ymax + margin
+
+
+def _chi2_y_limits(*chi2_hists: ROOT.TH1, pad_frac: float = 0.12) -> tuple[float, float]:
+  ymax = max((h.GetMaximum() for h in chi2_hists), default=0.0)
+  if ymax <= 0:
+    ymax = 1.0
+  return 0.0, ymax * (1.0 + pad_frac)
+
+
+def _ratio_y_range(ratio: ROOT.TH1, pad_frac: float = 0.08) -> None:
+  ratio.GetYaxis().SetRangeUser(*_ratio_y_limits(ratio, pad_frac=pad_frac))
 
 
 def _chi2_y_range(chi2_hist: ROOT.TH1, pad_frac: float = 0.12) -> None:
-  ymax = chi2_hist.GetMaximum()
-  if ymax <= 0:
-    ymax = 1.0
-  chi2_hist.GetYaxis().SetRangeUser(0.0, ymax * (1.0 + pad_frac))
+  chi2_hist.GetYaxis().SetRangeUser(*_chi2_y_limits(chi2_hist, pad_frac=pad_frac))
+
+
+def _apply_shared_projection_scales(pad_x: ROOT.TPad, pad_y: ROOT.TPad) -> None:
+  """Match x/y projection ratio and chi2 contribution y-axis ranges."""
+  rx = pad_x._projection_ratio
+  ry = pad_y._projection_ratio
+  cx = pad_x._projection_chi2
+  cy = pad_y._projection_chi2
+  rymin, rymax = _ratio_y_limits(rx, ry)
+  rx.GetYaxis().SetRangeUser(rymin, rymax)
+  ry.GetYaxis().SetRangeUser(rymin, rymax)
+  cymin, cymax = _chi2_y_limits(cx, cy)
+  cx.GetYaxis().SetRangeUser(cymin, cymax)
+  cy.GetYaxis().SetRangeUser(cymin, cymax)
 
 
 def _draw_unity_line(hist: ROOT.TH1) -> ROOT.TLine:
@@ -1107,6 +1131,7 @@ def plot_projections(
     pad_y, hy_data, gy_kde, hy_kde_bins, PLOT_TITLE_Y_PROJ, y_stats,
     f"{target.GetName()}_py",
   )
+  _apply_shared_projection_scales(pad_x, pad_y)
   canvas._projection_data = (
     hx_data, hy_data, gx_kde, gy_kde, hx_kde_bins, hy_kde_bins,
   )

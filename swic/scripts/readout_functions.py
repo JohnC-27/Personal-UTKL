@@ -17,8 +17,7 @@ def split_channels_numpy(csv_file):
   dtype=float,
   usecols=[i for i in range(97) if i not in skip],
   missing_values='',
-  filling_values=np.nan,
-)
+  filling_values=np.nan,)
 
   if data.shape[1] != 96:
     raise ValueError(f"Expected 96 columns, got {data.shape[1]}")
@@ -44,3 +43,8 @@ def get_mins(channels):
 def get_max(channels):
   maxs = [np.max(channels['set_1'],axis=1), np.max(channels['set_2'],axis=1), np.max(channels['set_3'],axis=1), np.max(channels['set_4'],axis=1)]
   return maxs
+
+# rg-58 has darker colors
+# 0,1,2,3 are lowest to highest current. e.g. 10,20,50,100 uA
+current_colors_rg_58 = ["mediumblue", "darkorange", "green", "red"]
+current_colors_tp = ["deepskyblue", "gold", "limegreen", "tomato"]
