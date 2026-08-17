@@ -106,7 +106,7 @@ if __name__ == "__main__":
     axs1.set_xlabel("Integration time (us)")
     axs1.set_ylabel("SWIC scanner signal (V)")
     axs1.set_ylim(-10.5,0)
-    fig1.suptitle("30 us wide pulses into 100 pF board")
+    #fig1.suptitle("30 us wide pulses into 100 pF board")
 
     fig1.savefig(os.path.join(OUTPUT_DIR, "100pF_board_07-13.pdf"))
 
@@ -116,12 +116,14 @@ if __name__ == "__main__":
 
     for i in range(12,24):
         if i<16:
-            axs2.plot(int_times*10., mins_1000[i], marker='o', color=current_colors_rg_58[i%4],linestyle=linstyles_for_current[0],label=labels[i%4])
+            axs2.plot(int_times*10., mins_1000[i], marker='o', color=current_colors_rg_58[i%4],linestyle=linstyles_for_current[2])
+        elif i>=16 and i < 20:
+            axs2.plot(int_times*10., mins_1000[i], marker='o', color=current_colors_rg_58[i%4],linestyle=linstyles_for_current[1])
         else:
-            axs2.plot(int_times*10., mins_1000[i], marker='o', color=current_colors_rg_58[i%4],linestyle=linstyles_for_current[(i%12)//4])
+            axs2.plot(int_times*10., mins_1000[i], marker='o', color=current_colors_rg_58[i%4],linestyle=linstyles_for_current[0],label=labels[i%4])
         #axs2.plot(int_times*10., mins_1000[i], marker='o', color=colors_for_current[i%4],linestyle=linstyles_for_current[2-((i%12)//4)])
 
-    axs2.plot(int_times*10., mins_1000[37], marker='o', color='black')
+    #axs2.plot(int_times*10., mins_1000[37], marker='o', color='black')
 
     axs2.grid()
 
@@ -129,7 +131,7 @@ if __name__ == "__main__":
     axs2.set_xlabel("Integration time (us)")
     axs2.set_ylabel("SWIC scanner signal (V)")
     axs2.set_ylim(-8.5,0)
-    fig2.suptitle("30 us wide pulses into 1000 pF board")
+    #fig2.suptitle("30 us wide pulses into 1000 pF board")
 
     fig2.savefig(os.path.join(OUTPUT_DIR, "1000pF_board_07-13.pdf"))
 
@@ -149,7 +151,7 @@ if __name__ == "__main__":
     axs3.plot(int_times*10., mins_10000[39], marker='o', color=current_colors_rg_58[3], linestyle=linstyles_for_current[1])
     axs3.plot(int_times*10., mins_10000[40], marker='o', color=current_colors_rg_58[3], linestyle=linstyles_for_current[2])
 
-    axs3.plot(int_times*10., mins_10000[36], marker='o', color='black',label="1 mA, different resistor")
+    #axs3.plot(int_times*10., mins_10000[36], marker='o', color='black',label="1 mA, different resistor")
 
     axs3.grid()
 
@@ -157,7 +159,7 @@ if __name__ == "__main__":
     axs3.set_xlabel("Integration time (us)")
     axs3.set_ylabel("SWIC scanner signal (V)")
     axs3.set_ylim(-3.5,0)
-    fig3.suptitle("30 us wide pulses into 10000 pF board")
+    #fig3.suptitle("30 us wide pulses into 10000 pF board")
 
     fig3.savefig(os.path.join(OUTPUT_DIR, "10000pF_board_07-13.pdf"))
 
@@ -180,6 +182,6 @@ if __name__ == "__main__":
     axs4.set_xlabel("Integration time (us)")
     axs4.set_ylabel("SWIC scanner signal (V)")
     axs4.set_ylim(-0.5,0)
-    fig4.suptitle("30 us wide pulses into 100000 pF board")
+    #fig4.suptitle("30 us wide pulses into 100000 pF board")
 
     fig4.savefig(os.path.join(OUTPUT_DIR, "100000pF_board_07-13.pdf"))

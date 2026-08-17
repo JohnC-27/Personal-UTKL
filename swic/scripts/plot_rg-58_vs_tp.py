@@ -27,7 +27,6 @@ plt.rcParams['figure.titlesize'] = 24
 
 if __name__ == "__main__":
 
-  colors_for_current = ['mediumblue', 'deepskyblue', 'darkorange', 'gold']
   linstyles_for_current = ['-','--',':']
   int_times = np.array([1,2,3,4,5,6,7,8])
   labels = ["1 mA", "2 mA", "5 mA", "10 mA"]

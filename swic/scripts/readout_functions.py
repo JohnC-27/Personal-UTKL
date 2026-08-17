@@ -46,5 +46,5 @@ def get_max(channels):
 
 # rg-58 has darker colors
 # 0,1,2,3 are lowest to highest current. e.g. 10,20,50,100 uA
-current_colors_rg_58 = ["mediumblue", "darkorange", "green", "red"]
-current_colors_tp = ["deepskyblue", "gold", "limegreen", "tomato"]
+current_colors_rg_58 = ["blue", "saddlebrown", "green", "red"]
+current_colors_tp = ["deepskyblue", "orange", "limegreen", "tomato"]

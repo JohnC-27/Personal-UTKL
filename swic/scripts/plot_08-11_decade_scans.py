@@ -110,7 +110,7 @@ if __name__ == "__main__":
   axs1.set_xlabel("Integration time (us)")
   axs1.set_ylabel("SWIC scanner signal (V)")
   axs1.set_ylim(-10.5,0)
-  fig1.suptitle("30 us wide pulses into 100 pF board")
+  #fig1.suptitle("30 us wide pulses into 100 pF board")
 
   fig1.savefig(os.path.join(OUTPUT_DIR, "100pF_board_08-11.pdf"))
 
@@ -133,7 +133,7 @@ if __name__ == "__main__":
   axs2.set_xlabel("Integration time (us)")
   axs2.set_ylabel("SWIC scanner signal (V)")
   axs2.set_ylim(-8.5,0)
-  fig2.suptitle("30 us wide pulses into 1000 pF board")
+  #fig2.suptitle("30 us wide pulses into 1000 pF board")
 
   fig2.savefig(os.path.join(OUTPUT_DIR, "1000pF_board_08-11.pdf"))
 
@@ -161,7 +161,7 @@ if __name__ == "__main__":
   axs3.set_xlabel("Integration time (us)")
   axs3.set_ylabel("SWIC scanner signal (V)")
   axs3.set_ylim(-3.5,0)
-  fig3.suptitle("30 us wide pulses into 10000 pF board")
+  #fig3.suptitle("30 us wide pulses into 10000 pF board")
 
   fig3.savefig(os.path.join(OUTPUT_DIR, "10000pF_board_08-11.pdf"))
 
@@ -184,6 +184,6 @@ if __name__ == "__main__":
   axs4.set_xlabel("Integration time (us)")
   axs4.set_ylabel("SWIC scanner signal (V)")
   axs4.set_ylim(-0.5,0)
-  fig4.suptitle("30 us wide pulses into 100000 pF board")
+  #fig4.suptitle("30 us wide pulses into 100000 pF board")
 
   fig4.savefig(os.path.join(OUTPUT_DIR, "100000pF_board_08-11.pdf"))
