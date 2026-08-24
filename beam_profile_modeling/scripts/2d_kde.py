@@ -20,7 +20,7 @@ ROOT.gROOT.SetBatch(True)
 
 
 # ===============================SCRIPT PARAMS===============================
-INPUT_FILE_NAME = "ml_nominal_100bin_corrected.root"
+INPUT_FILE_NAME = "jan2026_corrected.root"
 INPUT_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", INPUT_FILE_NAME
 ) # "nominal_corrected.root" or 
@@ -29,10 +29,10 @@ INPUT_ROOT_FILE = os.path.join(
 # "nominal_xypos_1" in jan2026_studies_nominal.root
 # NominalxyposMM1" in mz_nominal..
 # ShiftxyposMM1 in ml_tracking_hornb...
-TARGET_HIST_NAME = "ShiftxyposMM1" 
+TARGET_HIST_NAME = "nominal_xypos_1" 
 
 OUTPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", f"ml_nominal_mm1_2d_kde.root"
+  os.path.dirname(__file__), "..", "root_files", f"jan2026_mm1_kde.root"
 )
 
 # Bandwidth multiplier for RooNDKeysPdf. Values ~2–3× bin spacing create visible

@@ -16,27 +16,27 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # Target number of bins per axis after combining the 2000-bin histograms.
-N_OUTPUT_BINS = 25
+N_OUTPUT_BINS = 50
 
 # Assumes square TH2
-SOURCE_BINS = 2000
+SOURCE_BINS = 200
 ROOT_FILES_DIR = os.path.join(os.path.dirname(__file__), "..", "root_files")
 
 SOURCE_FILES = {
-  1: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_pX_100um_trackingon.root"),
-  2: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_nX_100um_trackingon.root"),
-  3: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_pY_250um_trackingon.root"),
-  4: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_nY_250um_trackingon.root"),
-  5: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_nominal_trackingon.root")
+  1: os.path.join(ROOT_FILES_DIR, "jan2026studies_nominal.root"),
+  #2: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_nX_100um_trackingon.root"),
+  #3: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_pY_250um_trackingon.root"),
+  #4: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_beamshift_nY_250um_trackingon.root"),
+  #5: os.path.join(ROOT_FILES_DIR, "ml_tracking_hornb_tilt_down_5sigma_nominal_trackingon.root")
 }
 
 # Must be in same order as source files
 OUTPUT_FILES = {
-  1: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_pX_100um_{N_OUTPUT_BINS}bin.root"),
-  2: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_nX_100um_{N_OUTPUT_BINS}bin.root"),
-  3: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_pY_250um_{N_OUTPUT_BINS}bin.root"),
-  4: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_nY_250um_{N_OUTPUT_BINS}bin.root"),
-  5: os.path.join(ROOT_FILES_DIR, f"ml_nominal_{N_OUTPUT_BINS}bin.root")
+  1: os.path.join(ROOT_FILES_DIR, f"jan2026_{N_OUTPUT_BINS}bin.root"),
+  #2: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_nX_100um_{N_OUTPUT_BINS}bin.root"),
+  #3: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_pY_250um_{N_OUTPUT_BINS}bin.root"),
+  #4: os.path.join(ROOT_FILES_DIR, f"ml_beamshift_nY_250um_{N_OUTPUT_BINS}bin.root"),
+  #5: os.path.join(ROOT_FILES_DIR, f"ml_nominal_{N_OUTPUT_BINS}bin.root")
 }
 
 

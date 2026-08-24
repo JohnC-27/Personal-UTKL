@@ -14,11 +14,11 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 TRIM_ANOMALY = True
-Y_MAX_CM = 95.0
+Y_MAX_CM = 120.0
 # trim 5-10cm to remove the anomaly
 
 INPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_pX_100um_25bin.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "jan2026studies_nominal.root"
 )
 INPUT_ROOT_FILE2 = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nX_100um_25bin.root"
@@ -34,7 +34,7 @@ INPUT_ROOT_FILE5 = os.path.join(
 )
 
 OUTPUT_ROOT_FILE1 = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_pX_100um_25bin_corrected.root"
+  os.path.dirname(os.path.dirname(__file__)), "root_files", "jan2026_corrected.root"
 )
 OUTPUT_ROOT_FILE2 = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nX_100um_25bin_corrected.root"
@@ -161,7 +161,7 @@ def write_trimmed_hists(
 def main() -> int:
   group1_hists = load_th2_group(
     INPUT_ROOT_FILE1,
-    ["ShiftxyposMM1", "ShiftxyposMM2", "ShiftxyposMM3"],
+    ["nominal_xypos_1", "nominal_xypos_2", "nominal_xypos_3"],
   )
   group2_hists = load_th2_group(
     INPUT_ROOT_FILE2,
@@ -181,10 +181,10 @@ def main() -> int:
   )
 
   write_trimmed_hists(group1_hists, OUTPUT_ROOT_FILE1, Y_MAX_CM)
-  write_trimmed_hists(group2_hists, OUTPUT_ROOT_FILE2, Y_MAX_CM)
-  write_trimmed_hists(group3_hists, OUTPUT_ROOT_FILE3, Y_MAX_CM)
-  write_trimmed_hists(group4_hists, OUTPUT_ROOT_FILE4, Y_MAX_CM)
-  write_trimmed_hists(group5_hists, OUTPUT_ROOT_FILE5, Y_MAX_CM)
+  #write_trimmed_hists(group2_hists, OUTPUT_ROOT_FILE2, Y_MAX_CM)
+  #write_trimmed_hists(group3_hists, OUTPUT_ROOT_FILE3, Y_MAX_CM)
+  #write_trimmed_hists(group4_hists, OUTPUT_ROOT_FILE4, Y_MAX_CM)
+  #write_trimmed_hists(group5_hists, OUTPUT_ROOT_FILE5, Y_MAX_CM)
   return 0
 
 

@@ -12,22 +12,22 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # ===============================SCRIPT PARAMS===============================
-FIT_FILE_NAME = "nX_100um_mm1_2d_kde" # .root added below 
+FIT_FILE_NAME = "jan2026_50bin_mm1_kde" # .root added below 
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_overlay.pdf")
-OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections.pdf")
-OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio.pdf")
+OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_overlay_prop.pdf")
+OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections_prop.pdf")
+OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio_prop.pdf")
 
 # Plot titles (projections / ratio append suffixes below)
-PLOT_TITLE = "-100um x shift MM1"
+PLOT_TITLE = ""
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"  #removed "overlay until alpha bug is fixed"
-PLOT_TITLE_KDE_TEMPLATE = "KDE"
-PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} x projection"
-PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE} y projection"
-PLOT_TITLE_RATIO = f"{PLOT_TITLE} ratio plot"
+PLOT_TITLE_KDE_TEMPLATE = ""
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_RATIO = f"{PLOT_TITLE}"
 
 # plot adjustments, almost never change
 RATIO_Z_PAD = 1.05
@@ -646,7 +646,7 @@ def _draw_stats_and_params(
 
   param_lines = [
     f"h_{{x}} = {bw_x:.5g},  h_{{y}} = {bw_y:.5g},  #alpha = {alpha:.5g}",
-    f"#chi^{{2}} = {chi2:.4g},  #chi^{{2}}/ndf = {rchi2:.4g},  ndf = {ndf:.0f}",
+    f"#chi^{{2}} = {chi2:.4g},  #chi^{{2}}/dof = {rchi2:.4g},  dof = {ndf:.0f}",
   ]
   if meta.get("linear_combo", 0):
     mix = float(meta["mix"])
@@ -730,7 +730,7 @@ def plot_overlay(
   axis_titles = _style_surf_hist(data, line_color=ROOT.kBlue + 1)
   kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=1)
   data.Draw("LEGO")
-  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.2)
+  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.0)
   kde_surf.Draw("SURF SAME")
   _draw_surf3d_axis_titles(*axis_titles)
 
@@ -952,12 +952,12 @@ def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> Non
   latex.DrawLatex(
     x_label,
     y_chi,
-    f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}",
+    f"#chi^{{2}} = {stats.chi2:.4g},  dof = {stats.ndf}",
   )
   latex.DrawLatex(
     x_label,
     y_chi - dy,
-    f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}",
+    f"#chi^{{2}}/dof = {stats.reduced_chi2:.4g}",
   )
   pad._stats_latex = latex
 

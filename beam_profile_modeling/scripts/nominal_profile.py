@@ -1,10 +1,12 @@
+import os
 import ROOT
 import array
 import random
+ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning  # or kError to hide warnings too
 
 
-nominal_file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/root_files/nominal.root", "READ")
+nominal_file = ROOT.TFile.Open("/Users/johnculbertson/Documents/Personal-UTKL/beam_profile_modeling/root_files/nominal.root", "READ")
 ## three TH2D named nominalxyposMM1, 2, 3
 
 mm1 = nominal_file.Get("nominalxyposMM1")
@@ -364,57 +366,15 @@ def pol2_fn(hist):
 
 
 
-def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=None):
-  # Drawing: weighted adaptive KDE + local bandwidth (left) vs polynomial fit (right)
-  c1 = ROOT.TCanvas("c1", "KDE vs pol4", 1400, 600)
-  c1.Divide(2, 1)
-
-  hist_draw = hist.Clone(hist.GetTitle())
-  hist_draw.SetDirectory(0)
-  hist_draw.SetStats(0)
-
-  c1.cd(1)
-  pad_pdf = ROOT.TPad("pdf", "pdf", 0, 0.32, 1, 1)
-  pad_bw = ROOT.TPad("bw", "bw", 0, 0, 1, 0.32)
-  pad_pdf.Draw()
-  pad_bw.Draw()
-
-  pad_pdf.cd()
-  mode = "adaptive" if adaptive else "fixed"
-  alpha = getattr(kde, "_kde_alpha", None)
-  hist_draw.SetMarkerSize(0.8)
-  hist_draw.Draw("E1 HIST")
-  title = f"Weighted KDE ({mode} bandwidth)"
-  if alpha is not None:
-    title += f"; #alpha={alpha:.4g}"
-  hist_draw.SetTitle(title)
-  tkde = getattr(kde, "_hold_kde", None) if kde else None
-  if kde:
-    kde.SetLineColor(ROOT.kBlue)
-    kde.SetLineWidth(2)
-    kde.SetLineStyle(2)
-    kde.Draw("SAME C")
-    if reshape_scale is not None:
-      transformed = reshape_kde_tf1(kde, reshape_scale)
-      if transformed:
-        transformed.SetLineColor(ROOT.kMagenta + 1)
-        transformed.Draw("SAME C")
-  draw_chi2_caption(kde, hist_draw)
-
-  pad_bw.cd()
-  if tkde:
-    bw_graph = adaptive_bandwidth_graph(tkde, hist_draw)
-    if bw_graph:
-      bw_graph.Draw("AL")
-      pad_bw.SetGridy()
-
-  c1.cd(2)
+def format_output(hist, pol2, outfile):
   hist_pol2 = hist.Clone()
   hist_pol2.SetDirectory(0)
   hist_pol2.SetStats(0)
   hist_pol2.SetMarkerSize(0.8)
+
+  c1 = ROOT.TCanvas("c1", "pol8 fit", 800, 600)
   hist_pol2.Draw("E1 HIST")
-  hist_pol2.SetTitle("X projection pol8 fit")
+  hist_pol2.SetTitle("")
   if pol2:
     pol2.SetLineColor(ROOT.kRed)
     pol2.SetLineWidth(2)
@@ -422,20 +382,13 @@ def format_output(hist, kde, pol2, adaptive=DEFAULT_KDE_ADAPTIVE, reshape_scale=
     draw_chi2_caption(pol2, hist_pol2)
 
   c1.Update()
-  input()
+  c1.SaveAs(outfile)
+  print(f"Saved {outfile}")
 
 
-
+OUTPUT_PDF = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "plots", "nominal_mm1x_pol8_fit.pdf"
+)
 
 hist = mm1x
-
-# seems like 0.18-0.22 are best for gaussian, not sure for others
-# 0.4 is about the max before it becomes nonsensical. The max is currently 1 in the def of optimized_kde
-min_bw = 0.05
-format_output(
-  hist,
-  optimized_kde(hist, min_bw, adaptive=DEFAULT_KDE_ADAPTIVE),
-  pol2_fn(hist),
-  adaptive=DEFAULT_KDE_ADAPTIVE,
-  reshape_scale=0.98,
-)
+format_output(hist, pol2_fn(hist), OUTPUT_PDF)

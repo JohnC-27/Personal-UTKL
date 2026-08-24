@@ -34,13 +34,13 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # ===============================SCRIPT PARAMS===============================
 # target hist file and hist name
 HIST_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "ml_nominal_100bin_corrected.root"
+  os.path.dirname(__file__), "..", "root_files", "jan2026_50bin_corrected.root"
 )
-HIST_NAME = "ShiftxyposMM1"
+HIST_NAME = "nominal_xypos_1"
 
 
 KDE_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "pX_100um_mm1_2d_kde_shifted_(0.154976,0).root"
+  os.path.dirname(__file__), "..", "root_files", "jan2026_50bin_mm1_kde.root"
 )
 
 # Rebin option here for hists >100 bins each axis or so
@@ -52,19 +52,19 @@ REBIN_FACTOR_Y = 1
 # Restriction for getting the "good area" of the KDE (roughly the middle 80% of each axis)
 # After rebinning, keep a centered Nx x Ny window for plot + stats (None = all).
 # int = bins to keep on that axis after rebin (centered crop so oringinal nbins must be even)
-RESTRICT_NBINS_X = 72
-RESTRICT_NBINS_Y = 72
+RESTRICT_NBINS_X = 32
+RESTRICT_NBINS_Y = 32
 
-OUTPUT_TAG = "2d_kde_vs"
+OUTPUT_TAG = "proposal"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 # Plot titles (projections / chi2 append suffixes below)
-PLOT_TITLE = "+100um beamshift KDE vs nominal hist"
-PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
-PLOT_TITLE_KDE_TEMPLATE = "KDE"
-PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} x projection"
-PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE} y projection"
-PLOT_TITLE_CHI2 = f"{PLOT_TITLE} #chi^{{2}} contribution"
+PLOT_TITLE = ""
+PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}a)"
+PLOT_TITLE_KDE_TEMPLATE = ""
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_CHI2 = "" #f"{PLOT_TITLE} #chi^{{2}}"
 
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.
 # kde eval and point plotting scales as this squared
@@ -775,7 +775,7 @@ def _print_comparison_stats(
     f"mean=({kde_stats.mean_x:.6g}, {kde_stats.mean_y:.6g})  "
     f"std=({kde_stats.std_x:.6g}, {kde_stats.std_y:.6g})"
   )
-  print(f"  chi2 = {chi2:.6g}, ndf = {ndf}, chi2/ndf = {reduced:.6g}")
+  print(f"  chi2 = {chi2:.6g}, dof = {ndf}, chi2/dof = {reduced:.6g}")
 
 
 def evaluate_comparison(
@@ -1073,12 +1073,12 @@ def _draw_projection_stats_box(pad: ROOT.TPad, stats: Th1ProjectionStats) -> Non
   latex.DrawLatex(
     x_label,
     y_chi,
-    f"#chi^{{2}} = {stats.chi2:.4g},  ndf = {stats.ndf}",
+    f"#chi^{{2}} = {stats.chi2:.4g},  dof = {stats.ndf}",
   )
   latex.DrawLatex(
     x_label,
     y_chi - dy,
-    f"#chi^{{2}}/ndf = {stats.reduced_chi2:.4g}",
+    f"#chi^{{2}}/dof = {stats.reduced_chi2:.4g}",
   )
   pad._stats_latex = latex
 
@@ -1108,13 +1108,13 @@ def _param_lines(
   lines = [
     f"h_{{x}} = {bw_x:.5g},  h_{{y}} = {bw_y:.5g},  #alpha = {fit['alpha']:.5g}",
     (
-      f"#chi^{{2}} = {fit['chi2']:.4g},  #chi^{{2}}/ndf = {fit['reduced_chi2']:.4g},  "
-      f"ndf = {fit['ndf']:.0f}"
+      f"#chi^{{2}} = {fit['chi2']:.4g},  #chi^{{2}}/dof = {fit['reduced_chi2']:.4g},  "
+      f"dof = {fit['ndf']:.0f}"
     ),
   ]
   if meta.get("linear_combo", 0):
     mix = float(meta.get("mix", float("nan")))
-    lines.append(f"mix = {mix:.4g} (unmirrored),  {1.0 - mix:.4g} (mirrored)")
+    #TODO lines.append(f"mix = {mix:.4g} (unmirrored),  {1.0 - mix:.4g} (mirrored)")
   return lines
 
 
@@ -1423,7 +1423,7 @@ def plot_chi2_contrib_lego(
   latex.DrawLatex(
     0.08,
     0.87,
-    f"#chi^{{2}}={fit['chi2']:.2f}, #chi^{{2}}/ndf={fit['reduced_chi2']:.3f}",
+    f"#chi^{{2}}={fit['chi2']:.2f}, #chi^{{2}}/dof={fit['reduced_chi2']:.3f}",
   )
   canvas._keepalive = [contrib, latex]
   canvas.Update()
