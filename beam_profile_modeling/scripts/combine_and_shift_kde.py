@@ -26,22 +26,27 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 
 # ===============================SCRIPT PARAMS===============================
-# "shift" | "combine"
-MODE = "shift"
+# Modes:
+#  "shift"   — translate training bin centers by (SHIFT_X, SHIFT_Y), rebuild
+#              RooNDKeysPdf with the original fit_meta params, then evaluate the
+#              translated density back onto the original target_hist axes.
+#  "combine" — do the same for KDE_A and KDE_B independently, then form
+#              c1*A' + c2*B' on A's original grid.
+MODE = "combine" 
 
 INPUT_FILE_NAME = "pX_100um_mm1_2d_kde"  # .root ADDED BELOW
 INPUT_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", "root_files", f"{INPUT_FILE_NAME}.root"
 )
 
-# Enter as mm. *0.1 converts to cm (nominal axis units).
-SHIFT_X = 1.54976 * 0.1
-SHIFT_Y = 0.0 * 0.1
+# Enter as cm (nominal axis units).
+SHIFT_X = .154976 
+SHIFT_Y = 0.0
 
 # Combine mode: load two fit products, shift+rebuild each, then c1*A' + c2*B'.
 # Primary (A) supplies scan graphs, base fit_meta, and the original eval grid.
-COMBINE_FILE_A_NAME = "ml_nominal_mm1_2d_kde"  # .root added below
-COMBINE_FILE_B_NAME = "pX_100um_mm1_2d_kde"
+COMBINE_FILE_A_NAME = "nom_zarko_mm1_kde"  # .root added below
+COMBINE_FILE_B_NAME = "pbeam_pY_2sigma_mm1_kde"
 COMBINE_ROOT_A = os.path.join(
   os.path.dirname(__file__), "..", "root_files", f"{COMBINE_FILE_A_NAME}.root"
 )
@@ -49,10 +54,12 @@ COMBINE_ROOT_B = os.path.join(
   os.path.dirname(__file__), "..", "root_files", f"{COMBINE_FILE_B_NAME}.root"
 )
 
-SHIFT_A_X = -0.0912
+# Enter as cm (nominal axis units).
+SHIFT_A_X = 0.06828
 SHIFT_A_Y = 0.0
-SHIFT_B_X = 0.06108
+SHIFT_B_X = -0.056287
 SHIFT_B_Y = 0.0
+
 COEFF_A = 0.5
 COEFF_B = 0.5
 

@@ -5,7 +5,7 @@ import ROOT
 
 INPUT_ROOT_FILE = os.path.abspath(
   os.path.join(
-    os.path.dirname(__file__), "..", "root_files", "ml_nominal_100bin_corrected.root"
+    os.path.dirname(__file__), "..", "root_files", "pbeam_pY_2sigma_1e9pot_zarko_mums_100x96_corrected.root"
   )
 )
 

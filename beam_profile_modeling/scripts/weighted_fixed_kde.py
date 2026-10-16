@@ -744,7 +744,6 @@ def save_scan_results(
     fout.cd()
     stats_meta.Write()
 
-  fout.Write()
   fout.Close()
 
 

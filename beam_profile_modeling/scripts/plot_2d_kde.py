@@ -12,24 +12,24 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # ===============================SCRIPT PARAMS===============================
-FIT_FILE_NAME = "jan2026_50bin_mm1_kde" # .root added below 
+FIT_FILE_NAME = "" # .root added below 
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_overlay_prop.pdf")
-OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections_prop.pdf")
-OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio_prop.pdf")
+OUTPUT_OVERLAY = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_overlay.pdf")
+OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections.pdf")
+OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio.pdf")
 
 # Plot titles (projections / ratio append suffixes below)
-PLOT_TITLE = ""
+PLOT_TITLE = "+2 sigma Y proton beam shift MM1"
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"  #removed "overlay until alpha bug is fixed"
-PLOT_TITLE_KDE_TEMPLATE = ""
-PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}"
-PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_KDE_TEMPLATE = "Template"
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} X projection"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE} Y projection"
 PLOT_TITLE_RATIO = f"{PLOT_TITLE}"
 
-# plot adjustments, almost never change
+# plot adjustments. Almost never change these
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05
 
@@ -730,7 +730,7 @@ def plot_overlay(
   axis_titles = _style_surf_hist(data, line_color=ROOT.kBlue + 1)
   kde_axes = _style_surf_hist(kde_surf, line_color=ROOT.kRed + 1, line_width=1)
   data.Draw("LEGO")
-  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.0)
+  kde_surf.SetLineColorAlpha(ROOT.kRed + 1, 0.2)
   kde_surf.Draw("SURF SAME")
   _draw_surf3d_axis_titles(*axis_titles)
 

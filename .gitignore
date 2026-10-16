@@ -8,5 +8,7 @@ ai/
 .ai/
 .DS_Store
 beam_profile_modeling/root_files
+mums_ml_test/root_files
+*/root_files
 goals.md
 docs/

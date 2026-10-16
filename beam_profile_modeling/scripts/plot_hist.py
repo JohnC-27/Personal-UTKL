@@ -17,19 +17,25 @@ ROOT.gStyle.SetOptStat("neMmRr")
 # Means/RMS/stats use in-range bins only (exclude under/overflow).
 ROOT.TH1.StatOverflows(False)
 
-INPUT_ROOT_FILE = os.path.join(
-  os.path.dirname(os.path.dirname(__file__)), "root_files", "ml_beamshift_nX_100um_25bin_corrected.root"
-)
 
-HIST_NAME = "ShiftxyposMM1"
+FILE_NAME = "nom_1e9pot_zarko_mums_100x96_corrected.root"
+BASE_NAME = os.path.splitext(FILE_NAME)[0]  # removes .root
+
+INPUT_ROOT_FILE = os.path.join(
+  os.path.dirname(os.path.dirname(__file__)), "root_files", FILE_NAME)
+
+MM_NUM = '1'  # MMuon Mom num
+HIST_NAME = f"Beamline_shift_pXxyposMM{MM_NUM}"
+
+# Output file naming [file name]_mm[mm number]_[plot type].pdf
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_2D = os.path.join(OUTPUT_DIR, "ml_beamshift_nX_100um_25bin_corrected_colz.pdf")
-OUTPUT_3D = os.path.join(OUTPUT_DIR, "ml_beamshift_nX_100um_25bin_corrected_surf3d.pdf")
-OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, "ml_beamshift_nX_100um_25bin_corrected_xyproj.pdf")
+OUTPUT_2D = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_mm{MM_NUM}_colz.pdf")
+OUTPUT_3D = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_mm{MM_NUM}_surf3d.pdf")
+OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_mm{MM_NUM}_xyproj.pdf")
 
 REBIN = False
-N_OUTPUT_BINS_X = 200
-N_OUTPUT_BINS_Y = 200
+N_OUTPUT_BINS_X = 100
+N_OUTPUT_BINS_Y = 100
 
 SHOW_STATS = True
 # TPaveStats corners in NDC (pad fraction): (x1, y1, x2, y2).
@@ -39,8 +45,8 @@ STATS_BOX_COLZ = (0.14, 0.68, 0.42, 0.90)
 STATS_BOX_PROJ = (0.37, 0.2, 0.67, 0.4)
 
 # "" defaults to histogram name (or title?)
-PLOT_TITLE_3D = "-100um x shift MM1"
-PLOT_TITLE_PROJ = "-100um x shift MM1" # adds "X/Y Projection"
+PLOT_TITLE_3D = ""
+PLOT_TITLE_PROJ = "Nominal beam at MM1" # adds "X/Y Projection"
 # ===========================================================================
 
 
@@ -251,7 +257,7 @@ def plot_surf3d(hist: ROOT.TH2, outfile: str) -> None:
   canvas.SetBottomMargin(0.05)
   canvas.SetTopMargin(0.1)
 
-  h3d.Draw("SURF E")
+  h3d.Draw("LEGO")
   _draw_surf3d_axis_titles(xtitle, ytitle, ztitle)
   canvas.Update()
   canvas.SaveAs(outfile)
@@ -299,7 +305,7 @@ def plot_projection(hist: ROOT.TH2, outfile: str) -> None:
     h1d.GetYaxis().SetTitle(ztitle)
     h1d.SetTitle(proj_title)
 
-  canvas = ROOT.TCanvas("c_proj", f"{hist.GetName()} projections", 1400, 600)
+  canvas = ROOT.TCanvas("c_proj", f"{hist.GetName()} projections", 1400, 550)
   canvas.Divide(2, 1)
 
   canvas.cd(1)

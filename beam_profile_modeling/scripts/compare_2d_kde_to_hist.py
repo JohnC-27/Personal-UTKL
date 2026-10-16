@@ -34,13 +34,13 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # ===============================SCRIPT PARAMS===============================
 # target hist file and hist name
 HIST_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "jan2026_50bin_corrected.root"
+  os.path.dirname(__file__), "..", "root_files", "pbeam_pY_1sigma_1e9pot_zarko_mums_100x96_corrected.root"
 )
-HIST_NAME = "nominal_xypos_1"
+HIST_NAME = "Beamline_shift_pXxyposMM1"
 
 
 KDE_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "jan2026_50bin_mm1_kde.root"
+  os.path.dirname(__file__), "..", "root_files", "nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0.06828,0)_sB(-0.056287,0)_c(0.5,0.5).root"
 )
 
 # Rebin option here for hists >100 bins each axis or so
@@ -52,18 +52,18 @@ REBIN_FACTOR_Y = 1
 # Restriction for getting the "good area" of the KDE (roughly the middle 80% of each axis)
 # After rebinning, keep a centered Nx x Ny window for plot + stats (None = all).
 # int = bins to keep on that axis after rebin (centered crop so oringinal nbins must be even)
-RESTRICT_NBINS_X = 32
-RESTRICT_NBINS_Y = 32
+RESTRICT_NBINS_X = 76
+RESTRICT_NBINS_Y = 76
 
-OUTPUT_TAG = "proposal"
+OUTPUT_TAG = "10-14_meeting"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 # Plot titles (projections / chi2 append suffixes below)
-PLOT_TITLE = ""
-PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}a)"
+PLOT_TITLE = "Combined nominal and +2 sigma Y shift over +1 sigma"
+PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
 PLOT_TITLE_KDE_TEMPLATE = ""
-PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}"
-PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}, X projection"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}, Y projection"
 PLOT_TITLE_CHI2 = "" #f"{PLOT_TITLE} #chi^{{2}}"
 
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.

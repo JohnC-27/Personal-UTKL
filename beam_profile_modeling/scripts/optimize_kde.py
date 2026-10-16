@@ -387,7 +387,6 @@ def save_fit_results(
   fout.cd()
   meta.Write()
 
-  fout.Write()
   fout.Close()
 
 

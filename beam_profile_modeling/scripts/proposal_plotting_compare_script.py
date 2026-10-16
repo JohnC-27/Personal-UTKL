@@ -35,35 +35,35 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # ===============================SCRIPT PARAMS===============================
 # target hist file and hist name
 HIST_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "mz_nominal_2000bin_run1.root"
+  os.path.dirname(__file__), "..", "root_files", "pbeam_pY_1sigma_1e9pot_zarko_mums_100x96_corrected.root"
 )
-HIST_NAME = "NominalxyposMM1"
+HIST_NAME = "Beamline_shift_pXxyposMM1"
 
 
 KDE_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "jan2026_50bin_mm1_kde.root"
+  os.path.dirname(__file__), "..", "root_files", "nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0.06828,0)_sB(-0.056287,0)_c(0.5,0.5).root"
 )
 
 # Rebin option here for hists >100 bins each axis or so
 # Rebin by combining adjacent bins (1 = no rebin). Must evenly divide source bins.
 # int -> original_nbins / REBIN_FACTOR = new_nbins
-REBIN_FACTOR_X = 40
-REBIN_FACTOR_Y = 40
+REBIN_FACTOR_X = 1
+REBIN_FACTOR_Y = 1
 
 # Restriction for getting the "good area" of the KDE (roughly the middle 80% of each axis)
 # After rebinning, keep a centered Nx x Ny window for plot + stats (None = all).
 # int = bins to keep on that axis after rebin (centered crop so oringinal nbins must be even)
-RESTRICT_NBINS_X = 38
-RESTRICT_NBINS_Y = 36
+RESTRICT_NBINS_X = 76
+RESTRICT_NBINS_Y = 76
 
-OUTPUT_TAG = "jan2026_50bin_vs_mz_1"
+OUTPUT_TAG = "10-14_meeting"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "proposal_plots")
 
 # Plot titles (projections / chi2 append suffixes below)
-PLOT_TITLE = ""
+PLOT_TITLE = "Combined nominal and +2 sigma Y shift over +1 sigma"
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
-PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}"
-PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}"
+PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}, X projection"
+PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}, Y projection"
 PLOT_TITLE_CHI2 = "" #f"{PLOT_TITLE} #chi^{{2}}"
 
 # Overlay stats box corners in pad NDC: (x1, y1, x2, y2).
@@ -80,10 +80,10 @@ OVERLAY_STATS_TEXT_SIZE = 0.025
 # Direct RooNDKeysPdf evaluation grid for 2D surfaces.
 # kde eval and point plotting scales as this squared
 # 100 is best for 3D mesh visualization. 200 is too many lines to show shape
-KDE_OVERLAY_POINTS = 100 # PER AXIS -> 100 by 100 = 10,000 points over the plane
+KDE_OVERLAY_POINTS = 200 # PER AXIS -> 100 by 100 = 10,000 points over the plane
 
 # Continuous projection curves: PDF marginalization sample count per axis.
-KDE_PROJECTION_POINTS = 200
+KDE_PROJECTION_POINTS = 400
 
 RATIO_Z_PAD = 1.05
 RATIO_Z_MIN_HALF_WIDTH = 0.05

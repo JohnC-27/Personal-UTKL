@@ -145,7 +145,6 @@ def rebin_run(run: int, n_output_bins: int) -> str:
     hist.SetDirectory(fout)
     hist.Write()
 
-  fout.Write()
   fout.Close()
   return outfile
 
