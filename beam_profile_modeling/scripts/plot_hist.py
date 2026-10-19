@@ -17,14 +17,13 @@ ROOT.gStyle.SetOptStat("neMmRr")
 # Means/RMS/stats use in-range bins only (exclude under/overflow).
 ROOT.TH1.StatOverflows(False)
 
-
-FILE_NAME = "nom_1e9pot_zarko_mums_100x96_corrected.root"
+FILE_NAME = "pbeam_pY_2sigma_1e9pot_zarko_mums_100x96_corrected.root"
 BASE_NAME = os.path.splitext(FILE_NAME)[0]  # removes .root
 
 INPUT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", FILE_NAME)
 
-MM_NUM = '1'  # MMuon Mom num
+MM_NUM = '3'  # MMuon Mom num
 HIST_NAME = f"Beamline_shift_pXxyposMM{MM_NUM}"
 
 # Output file naming [file name]_mm[mm number]_[plot type].pdf
@@ -134,9 +133,11 @@ def print_th2_stats(hist: ROOT.TH2, label: str = "") -> None:
   stats = th2_stats_summary(hist)
   prefix = f"{label}: " if label else ""
   print(
-    f"{prefix}entries={stats['entries']:.3g}  integral={stats['integral']:.3g}  "
-    f"mean=({stats['mean_x']:.3g}, {stats['mean_y']:.3g})  "
-    f"std=({stats['std_x']:.3g}, {stats['std_y']:.3g})"
+    f"\n"
+    f"{prefix}\nentries={stats['entries']:.5g}  integral={stats['integral']:.5g}  "
+    f"mean=({stats['mean_x']:.4g}, {stats['mean_y']:.4g})  "
+    f"std=({stats['std_x']:.4g}, {stats['std_y']:.4g})"
+    f"\n"
   )
 
 
@@ -341,7 +342,7 @@ def main() -> int:
   n_entries = hist.GetEntries()
   clear_under_overflow(hist, entries=n_entries)
 
-  #print_th2_stats(hist, label=hist.GetName())
+  print_th2_stats(hist, label=hist.GetName())
 
   os.makedirs(OUTPUT_DIR, exist_ok=True)
   #plot_colz(hist, OUTPUT_2D)

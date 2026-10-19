@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Combines rebin_TH2.py and remove_y_anomaly.py.
+Takes in "raw" TH2s from simulation
 Rebin square TH2s to N_OUTPUT_BINS x N_OUTPUT_BINS, then trim the y axis
 symmetrically to [-Y_MAX_CM, Y_MAX_CM] to remove the tracking plane
 anomaly at the +y edge.
