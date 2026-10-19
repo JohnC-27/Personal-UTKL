@@ -1,8 +1,10 @@
 """
 Plotting shifts in the x and y mean of histograms and KDEs at all 3 mums. 
+
+Current state is plotting the linear and quatratic fits of mums position
+in y vs proton beam pos in y to match the Yonehara plot.
 """
 import os
-from matplotlib.lines import lineStyles
 import numpy as np
 import matplotlib.pyplot as plt
 
