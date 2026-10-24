@@ -45,8 +45,8 @@ SHIFT_Y = 0.0
 
 # Combine mode: load two fit products, shift+rebuild each, then c1*A' + c2*B'.
 # Primary (A) supplies scan graphs, base fit_meta, and the original eval grid.
-COMBINE_FILE_A_NAME = "nom_zarko_mm1_kde"  # .root added below
-COMBINE_FILE_B_NAME = "pbeam_pY_2sigma_mm1_kde"
+COMBINE_FILE_A_NAME = "nom_zarko_mm3_kde"  # .root added below
+COMBINE_FILE_B_NAME = "pbeam_pY_2sigma_mm3_kde"
 COMBINE_ROOT_A = os.path.join(
   os.path.dirname(__file__), "..", "root_files", f"{COMBINE_FILE_A_NAME}.root"
 )
@@ -55,10 +55,10 @@ COMBINE_ROOT_B = os.path.join(
 )
 
 # Enter as cm (nominal axis units).
-SHIFT_A_X = 0.06828
-SHIFT_A_Y = 0.0
-SHIFT_B_X = -0.056287
-SHIFT_B_Y = 0.0
+SHIFT_A_X = 0.0
+SHIFT_A_Y = 0.8277
+SHIFT_B_X = 0.0
+SHIFT_B_Y = -0.8277
 
 COEFF_A = 0.5
 COEFF_B = 0.5

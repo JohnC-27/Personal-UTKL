@@ -17,7 +17,7 @@ ROOT.gStyle.SetOptStat("neMmRr")
 # Means/RMS/stats use in-range bins only (exclude under/overflow).
 ROOT.TH1.StatOverflows(False)
 
-FILE_NAME = "pbeam_pY_2sigma_1e9pot_zarko_mums_100x96_corrected.root"
+FILE_NAME = "nom_1e9pot_zarko_mums_100x96_corrected.root"
 BASE_NAME = os.path.splitext(FILE_NAME)[0]  # removes .root
 
 INPUT_ROOT_FILE = os.path.join(
@@ -45,7 +45,7 @@ STATS_BOX_PROJ = (0.37, 0.2, 0.67, 0.4)
 
 # "" defaults to histogram name (or title?)
 PLOT_TITLE_3D = ""
-PLOT_TITLE_PROJ = "Nominal beam at MM1" # adds "X/Y Projection"
+PLOT_TITLE_PROJ = f"Nominal beam at MM{MM_NUM}" # adds " X/Y Projection"
 # ===========================================================================
 
 
@@ -281,12 +281,10 @@ def plot_projection(hist: ROOT.TH2, outfile: str) -> None:
   hx.SetDirectory(0)
   hy.SetDirectory(0)
 
-  # Stats-box "Entries" = in-range integral (sum of weights), not GetEntries().
   for h1d in (hx, hy):
     if h1d.GetSumw2N() == 0:
       h1d.Sumw2()
     clear_under_overflow(h1d)
-    h1d.SetEntries(h1d.Integral())
 
   xtitle = hist.GetXaxis().GetTitle() or "x [cm]"
   ytitle = hist.GetYaxis().GetTitle() or "y [cm]"
@@ -305,6 +303,10 @@ def plot_projection(hist: ROOT.TH2, outfile: str) -> None:
     h1d.GetXaxis().SetTitle(axis_title)
     h1d.GetYaxis().SetTitle(ztitle)
     h1d.SetTitle(proj_title)
+
+  # Projections show Integral ("i") in place of Entries ("e").
+  prev_opt_stat = ROOT.gStyle.GetOptStat()
+  ROOT.gStyle.SetOptStat("niMmRr")
 
   canvas = ROOT.TCanvas("c_proj", f"{hist.GetName()} projections", 1400, 550)
   canvas.Divide(2, 1)
@@ -331,6 +333,7 @@ def plot_projection(hist: ROOT.TH2, outfile: str) -> None:
 
   canvas.Update()
   canvas.SaveAs(outfile)
+  ROOT.gStyle.SetOptStat(prev_opt_stat)
   print(f"Saved {outfile}")
 
 

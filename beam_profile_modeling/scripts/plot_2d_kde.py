@@ -12,7 +12,7 @@ ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
 # ===============================SCRIPT PARAMS===============================
-FIT_FILE_NAME = "" # .root added below 
+FIT_FILE_NAME = "nom_zarko_mm2_kde" # .root added below 
 FIT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", f"{FIT_FILE_NAME}.root"
 )
@@ -22,7 +22,7 @@ OUTPUT_PROJECTIONS = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_projections.pdf"
 OUTPUT_RATIO = os.path.join(OUTPUT_DIR, f"{FIT_FILE_NAME}_ratio.pdf")
 
 # Plot titles (projections / ratio append suffixes below)
-PLOT_TITLE = "+2 sigma Y proton beam shift MM1"
+PLOT_TITLE = "Nominal beam at MM2"
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"  #removed "overlay until alpha bug is fixed"
 PLOT_TITLE_KDE_TEMPLATE = "Template"
 PLOT_TITLE_X_PROJ = f"{PLOT_TITLE} X projection"

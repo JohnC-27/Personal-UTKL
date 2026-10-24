@@ -41,8 +41,15 @@ HIST_NAME = "Beamline_shift_pXxyposMM1"
 
 
 KDE_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0.06828,0)_sB(-0.056287,0)_c(0.5,0.5).root"
+  os.path.dirname(__file__), "..", 
+  "root_files", 
+  "nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0,0)_sB(0,0)_c(0.5,0.5).root"
 )
+
+# nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0,0)_sB(0,0)_c(0.5,0.5).root 
+# nom_zarko_mm3_kde_plus_pbeam_pY_2sigma_mm3_kde_sA(0,0.8277)_sB(0,-0.8277)_c(0.5,0.5).root
+# nom_zarko_mm2_kde_plus_pbeam_pY_2sigma_mm2_kde_sA(0,0.71)_sB(0,-0.71)_c(0.5,0.5).root
+
 
 # Rebin option here for hists >100 bins each axis or so
 # Rebin by combining adjacent bins (1 = no rebin). Must evenly divide source bins.
@@ -53,14 +60,14 @@ REBIN_FACTOR_Y = 1
 # Restriction for getting the "good area" of the KDE (roughly the middle 80% of each axis)
 # After rebinning, keep a centered Nx x Ny window for plot + stats (None = all).
 # int = bins to keep on that axis after rebin (centered crop so oringinal nbins must be even)
-RESTRICT_NBINS_X = 76
-RESTRICT_NBINS_Y = 76
+RESTRICT_NBINS_X = 80
+RESTRICT_NBINS_Y = 80
 
-OUTPUT_TAG = "10-14_meeting"
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "proposal_plots")
+OUTPUT_TAG = "10-23_meeting"
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 # Plot titles (projections / chi2 append suffixes below)
-PLOT_TITLE = "Combined nominal and +2 sigma Y shift over +1 sigma"
+PLOT_TITLE = "Combined nominal and +2 sigma Y shift over +1 sigma MM1"
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
 PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}, X projection"
 PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}, Y projection"

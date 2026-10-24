@@ -16,6 +16,7 @@ pbeamshift_cm = [0,0.05,0.1]
 pbeamshift_smooth = np.linspace(pbeamshift_cm[0], pbeamshift_cm[-1], 200)
 
 # shift in mean at each MM in cm, rounded to the nearest micron
+# taken from 100x96 'raw' histograms from Mo
 # list corresponds to beamshift of [nominal, 1 sigma, 2 sigma]
 mm1_hist_x = [0.2320, 0.1757, 0.1075]
 mm1_hist_y = [0.7751, 0.8006, 0.7832]
@@ -24,6 +25,14 @@ mm2_hist_y = [0.6218, 1.3220, 2.0420]
 mm3_hist_x = [0.2540, 0.0432, -0.0152]
 mm3_hist_y = [0.2965, 1.0920, 1.9570]
 
+
+# TODO fill in
+mm1_kde_x = []
+mm1_kde_y = []
+mm2_kde_x = []
+mm2_kde_y = []
+mm3_kde_x = []
+mm3_kde_y = []
 
 m1, b1 = np.polyfit(pbeamshift_cm, mm1_hist_y, 1)
 m2, b2 = np.polyfit(pbeamshift_cm, mm2_hist_y, 1)
