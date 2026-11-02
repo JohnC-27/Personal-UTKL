@@ -6,7 +6,7 @@
 
 ## ai/ logs and documentation purpose:
 
-- Working memory for **agents and humans**. Update these files over burying decisions in chat only.
+- Working memory for agents and humans. Update these files over burying decisions in chat only.
 
 
 | File                                 | Purpose                                          | Update when                                 |
