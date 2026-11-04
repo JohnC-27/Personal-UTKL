@@ -6,6 +6,8 @@ import sys
 
 import ROOT
 
+from rebin_and_trim import resize_th2
+
 ROOT.gROOT.SetBatch(True)
 ROOT.gErrorIgnoreLevel = ROOT.kWarning
 
@@ -17,24 +19,60 @@ ROOT.gStyle.SetOptStat("neMmRr")
 # Means/RMS/stats use in-range bins only (exclude under/overflow).
 ROOT.TH1.StatOverflows(False)
 
-FILE_NAME = "nom_1e9pot_zarko_mums_100x96_corrected.root"
+FILE_NAME = "protonbeam_pY_2sigma_1e9pot_zarko.root"
 BASE_NAME = os.path.splitext(FILE_NAME)[0]  # removes .root
+# Set manually or comment out for nominal base name
+BASE_NAME = "pbeam_pY_2sigma_1e9pot_zarko"
 
 INPUT_ROOT_FILE = os.path.join(
   os.path.dirname(os.path.dirname(__file__)), "root_files", FILE_NAME)
 
-MM_NUM = '3'  # MMuon Mom num
+MM_NUM = '3'  # Muon monitor number
 HIST_NAME = f"Beamline_shift_pXxyposMM{MM_NUM}"
 
-# Output file naming [file name]_mm[mm number]_[plot type].pdf
-OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
-OUTPUT_2D = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_mm{MM_NUM}_colz.pdf")
-OUTPUT_3D = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_mm{MM_NUM}_surf3d.pdf")
-OUTPUT_PROJECTION = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_mm{MM_NUM}_xyproj.pdf")
-
-REBIN = False
+# Desired number of output bins BEFORE trimming
+# Must ensure that desired bin conuts are a multiple of the input bins
+REBIN = True
 N_OUTPUT_BINS_X = 100
 N_OUTPUT_BINS_Y = 100
+
+# Trim applied after rebinning. (min, max) in cm
+# None on either side = no limit.
+# Keeps bins whose centers are in range.
+TRIM = True
+X_LIMITS_CM = (-80.0, 80.0)
+Y_LIMITS_CM = (-80.0, 80.0)
+
+
+def _trim_tag(axis_name: str, limits: tuple[float | None, float | None]) -> str:
+  low, high = limits
+  if low is None and high is None:
+    return ""
+  low_str = "min" if low is None else f"{low:g}"
+  high_str = "max" if high is None else f"{high:g}"
+  return f"_{axis_name}{low_str}to{high_str}"
+
+
+TRIM_TAG = (
+  _trim_tag("x", X_LIMITS_CM) + _trim_tag("y", Y_LIMITS_CM) if TRIM else ""
+)
+
+# Output file naming [file name]_mm[mm number][bin tag][trim tag]_[plot type].pdf
+# Bin tag is the final [binx]x[biny] after rebin/trim, so paths are built in main().
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "plots")
+
+
+def output_paths(hist: ROOT.TH2) -> tuple[str, str, str]:
+  """Return (colz, surf3d, xyproj) output paths for the processed hist."""
+  bin_tag = (
+    f"_{hist.GetNbinsX()}x{hist.GetNbinsY()}" if REBIN or TRIM else ""
+  )
+  stem = f"{BASE_NAME}_mm{MM_NUM}{bin_tag}{TRIM_TAG}"
+  return (
+    os.path.join(OUTPUT_DIR, f"{stem}_colz.pdf"),
+    os.path.join(OUTPUT_DIR, f"{stem}_surf3d.pdf"),
+    os.path.join(OUTPUT_DIR, f"{stem}_xyproj.pdf"),
+  )
 
 SHOW_STATS = True
 # TPaveStats corners in NDC (pad fraction): (x1, y1, x2, y2).
@@ -45,7 +83,7 @@ STATS_BOX_PROJ = (0.37, 0.2, 0.67, 0.4)
 
 # "" defaults to histogram name (or title?)
 PLOT_TITLE_3D = ""
-PLOT_TITLE_PROJ = f"Nominal beam at MM{MM_NUM}" # adds " X/Y Projection"
+PLOT_TITLE_PROJ = f"Proton beam +2 sigma shift in y MM{MM_NUM}" # adds " X/Y Projection"
 # ===========================================================================
 
 
@@ -343,14 +381,19 @@ def main() -> int:
   if REBIN:
     hist = rebin_histogram(hist, N_OUTPUT_BINS_X, N_OUTPUT_BINS_Y)
   n_entries = hist.GetEntries()
+  if TRIM:
+    hist = resize_th2(hist, *X_LIMITS_CM, *Y_LIMITS_CM)
+    # Stored Entries would still count the full histogram; use the window sum.
+    n_entries = hist.Integral()
   clear_under_overflow(hist, entries=n_entries)
 
   print_th2_stats(hist, label=hist.GetName())
 
+  output_2d, output_3d, output_projection = output_paths(hist)
   os.makedirs(OUTPUT_DIR, exist_ok=True)
-  #plot_colz(hist, OUTPUT_2D)
-  plot_surf3d(hist, OUTPUT_3D)
-  plot_projection(hist, OUTPUT_PROJECTION)
+  #plot_colz(hist, output_2d)
+  #plot_surf3d(hist, output_3d)
+  plot_projection(hist, output_projection)
 
   if show:
     ROOT.gROOT.SetBatch(False)

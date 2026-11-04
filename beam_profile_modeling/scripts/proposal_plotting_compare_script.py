@@ -35,15 +35,15 @@ ROOT.gErrorIgnoreLevel = ROOT.kWarning
 # ===============================SCRIPT PARAMS===============================
 # target hist file and hist name
 HIST_ROOT_FILE = os.path.join(
-  os.path.dirname(__file__), "..", "root_files", "pbeam_pY_1sigma_1e9pot_zarko_mums_100x96_corrected.root"
+  os.path.dirname(__file__), "..", "root_files", "nom_1e9pot_zarko_mums_100x96_corrected.root"
 )
-HIST_NAME = "Beamline_shift_pXxyposMM1"
+HIST_NAME = "Beamline_shift_pXxyposMM3"
 
 
 KDE_ROOT_FILE = os.path.join(
   os.path.dirname(__file__), "..", 
   "root_files", 
-  "nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0,0)_sB(0,0)_c(0.5,0.5).root"
+  "nom_zarko_mm3_kde.root"
 )
 
 # nom_zarko_mm1_kde_plus_pbeam_pY_2sigma_mm1_kde_sA(0,0)_sB(0,0)_c(0.5,0.5).root 
@@ -63,11 +63,11 @@ REBIN_FACTOR_Y = 1
 RESTRICT_NBINS_X = 80
 RESTRICT_NBINS_Y = 80
 
-OUTPUT_TAG = "10-23_meeting"
+OUTPUT_TAG = "10-30_meeting"
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "plots")
 
 # Plot titles (projections / chi2 append suffixes below)
-PLOT_TITLE = "Combined nominal and +2 sigma Y shift over +1 sigma MM1"
+PLOT_TITLE = "Proton beam +1 sigma shift in y at MM1 over restricted region"
 PLOT_TITLE_OVERLAY = f"{PLOT_TITLE}"
 PLOT_TITLE_X_PROJ = f"{PLOT_TITLE}, X projection"
 PLOT_TITLE_Y_PROJ = f"{PLOT_TITLE}, Y projection"
@@ -1614,9 +1614,9 @@ def main() -> int:
   overlay_path, proj_path, chi2_path, ratio_path = output_paths(data)
   label = region_label(data)
   plot_overlay(data, fit, meta, train_target, overlay_path)
-  plot_projections(data, fit, proj_path)
-  plot_chi2_contrib_lego(data, fit, label, chi2_path)
-  plot_data_kde_ratio_lego(data, fit, ratio_path)
+  #plot_projections(data, fit, proj_path)
+  #plot_chi2_contrib_lego(data, fit, label, chi2_path)
+  #plot_data_kde_ratio_lego(data, fit, ratio_path)
   return 0
 
 
